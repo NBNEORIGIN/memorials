@@ -1,8 +1,12 @@
 """SVG generation endpoint — dispatches job items to their assigned processors."""
 
+import io
+import os
+import zipfile
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
@@ -91,3 +95,39 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
     db.refresh(job)
 
     return db.query(Job).options(joinedload(Job.items)).filter(Job.id == job_id).first()
+
+
+@router.get("/svg/{item_id}")
+def get_svg_file(item_id: int, db: Session = Depends(get_db)):
+    """Serve a generated SVG file for preview or download."""
+    item = db.query(JobItem).filter(JobItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if not item.svg_path or not os.path.exists(item.svg_path):
+        raise HTTPException(status_code=404, detail="SVG file not found")
+    return FileResponse(item.svg_path, media_type="image/svg+xml",
+                        filename=os.path.basename(item.svg_path))
+
+
+@router.get("/download/{job_id}")
+def download_all_svgs(job_id: int, db: Session = Depends(get_db)):
+    """Download all generated SVGs for a job as a ZIP file."""
+    job = db.query(Job).options(joinedload(Job.items)).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    completed = [i for i in job.items if i.status == "complete" and i.svg_path and os.path.exists(i.svg_path)]
+    if not completed:
+        raise HTTPException(status_code=404, detail="No completed SVG files to download")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for item in completed:
+            zf.write(item.svg_path, os.path.basename(item.svg_path))
+    buf.seek(0)
+
+    filename = f"{job.filename or f'job_{job.id}'}_svgs.zip"
+    return StreamingResponse(
+        buf, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Upload, Play, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, ChevronDown, ChevronUp, Settings } from 'lucide-react'
-import { uploadOrderFile, generateSvgs, fetchJobs, deleteJob } from '@/lib/api'
+import { uploadOrderFile, generateSvgs, fetchJobs, deleteJob, svgPreviewUrl, downloadAllUrl } from '@/lib/api'
 
 type JobItem = {
   id: number
@@ -261,6 +261,15 @@ export default function Home() {
                         <Play className="w-4 h-4" />
                         {generating ? 'Generating...' : 'Generate SVGs'}
                       </button>
+                      {completeCount > 0 && (
+                        <a
+                          href={downloadAllUrl(activeJob.id)}
+                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          <Download className="w-4 h-4" />
+                          Download ZIP
+                        </a>
+                      )}
                     </div>
                   </div>
 
@@ -279,6 +288,7 @@ export default function Home() {
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Line 1</th>
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Line 2</th>
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Processor</th>
+                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Preview</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -310,6 +320,18 @@ export default function Home() {
                                 </span>
                               ) : (
                                 <span className="text-xs text-red-500">{item.error || 'none'}</span>
+                              )}
+                            </td>
+                            <td className="py-2 px-2">
+                              {item.status === 'complete' && item.svg_path ? (
+                                <a href={svgPreviewUrl(item.id)} target="_blank" rel="noopener noreferrer"
+                                  className="inline-block w-16 h-10 rounded border border-gray-200 overflow-hidden hover:border-indigo-400 transition-colors bg-white">
+                                  <img src={svgPreviewUrl(item.id)} alt="SVG" className="w-full h-full object-contain" />
+                                </a>
+                              ) : item.status === 'error' ? (
+                                <span className="text-xs text-red-400" title={item.error || ''}>✕</span>
+                              ) : (
+                                <span className="text-xs text-gray-300">—</span>
                               )}
                             </td>
                           </tr>

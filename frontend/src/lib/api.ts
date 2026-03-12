@@ -63,3 +63,11 @@ export async function fetchProcessors() {
   if (!res.ok) throw new Error('Failed to fetch processors')
   return res.json()
 }
+
+export function svgPreviewUrl(itemId: number) {
+  return `${API_URL}/api/generate/svg/${itemId}`
+}
+
+export function downloadAllUrl(jobId: number) {
+  return `${API_URL}/api/generate/download/${jobId}`
+}
