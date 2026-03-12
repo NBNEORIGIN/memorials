@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Upload, Play, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, ChevronDown, ChevronUp, Settings } from 'lucide-react'
-import { uploadOrderFile, generateSvgs, fetchJobs, deleteJob, svgPreviewUrl, downloadAllUrl } from '@/lib/api'
+import { uploadOrderFile, generateSvgs, fetchJobs, deleteJob, resetJob, svgPreviewUrl, downloadAllUrl } from '@/lib/api'
 
 type JobItem = {
   id: number
@@ -102,6 +102,19 @@ export default function Home() {
       setError(e.message || 'Generation failed')
     } finally {
       setGenerating(false)
+    }
+  }, [activeJob])
+
+  const handleReset = useCallback(async () => {
+    if (!activeJob) return
+    setError(null)
+    try {
+      const result = await resetJob(activeJob.id)
+      setActiveJob(result)
+      const updatedJobs = await fetchJobs()
+      setJobs(updatedJobs)
+    } catch (e: any) {
+      setError(e.message || 'Reset failed')
     }
   }, [activeJob])
 
@@ -262,13 +275,21 @@ export default function Home() {
                         {generating ? 'Generating...' : 'Generate SVGs'}
                       </button>
                       {completeCount > 0 && (
-                        <a
-                          href={downloadAllUrl(activeJob.id)}
-                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-                        >
-                          <Download className="w-4 h-4" />
-                          Download ZIP
-                        </a>
+                        <>
+                          <a
+                            href={downloadAllUrl(activeJob.id)}
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                            Download ZIP
+                          </a>
+                          <button
+                            onClick={handleReset}
+                            className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-100 transition-colors"
+                          >
+                            Re-generate
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

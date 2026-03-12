@@ -26,8 +26,8 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    if job.status not in ("parsed", "partial"):
-        raise HTTPException(status_code=400, detail=f"Job status is '{job.status}', expected 'parsed'")
+    if job.status not in ("parsed", "partial", "complete", "failed"):
+        raise HTTPException(status_code=400, detail=f"Job status is '{job.status}', cannot generate")
 
     job.status = "processing"
     db.flush()
@@ -94,6 +94,26 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(job)
 
+    return db.query(Job).options(joinedload(Job.items)).filter(Job.id == job_id).first()
+
+
+@router.post("/reset/{job_id}", response_model=JobOut)
+def reset_job(job_id: int, db: Session = Depends(get_db)):
+    """Reset all items in a job back to 'ready' so they can be re-generated."""
+    job = db.query(Job).options(joinedload(Job.items)).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    for item in job.items:
+        if item.status in ("complete", "error"):
+            item.status = "ready"
+            item.svg_path = None
+            item.error = None
+
+    job.status = "parsed"
+    job.completed_at = None
+    db.commit()
+    db.refresh(job)
     return db.query(Job).options(joinedload(Job.items)).filter(Job.id == job_id).first()
 
 

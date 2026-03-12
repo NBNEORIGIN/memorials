@@ -64,6 +64,15 @@ export async function fetchProcessors() {
   return res.json()
 }
 
+export async function resetJob(jobId: number) {
+  const res = await fetch(`${API_URL}/api/generate/reset/${jobId}`, { method: 'POST' })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Reset failed')
+  }
+  return res.json()
+}
+
 export function svgPreviewUrl(itemId: number) {
   return `${API_URL}/api/generate/svg/${itemId}`
 }
