@@ -1,149 +1,141 @@
 """Regular Stakes — Graphic processors (coloured and B&W).
 
-These are stub implementations. The SVG generation logic will be ported
-from AmazonPhotoProcessor 2 / 002 D2C WRITER / regular_stakes.py.
+Ported from AmazonPhotoProcessor 2 / 002 D2C WRITER / regular_stakes.py.
+Print sheet: 439.8×289.9 mm, 3×3 grid, cell 140×90 mm (9 per page).
 """
 
 import os
 import svgwrite
 
-from app.processors.base import BaseProcessor, OrderItem, ProcessorResult
+from app.processors.base import (
+    BaseProcessor, OrderItem, PX_PER_MM, PT_TO_MM,
+    embed_image, split_line_to_fit,
+)
 from app.processors.registry import register
+
+
+def _render_regular_graphic_cell(
+    dwg: svgwrite.Drawing, item: OrderItem,
+    x: float, y: float, graphics_dir: str,
+    cell_w_px: float, cell_h_px: float,
+    line1_pt: float, line2_pt: float, line3_pt: float,
+    text_fill: str = "black",
+) -> None:
+    """Shared cell renderer for regular stakes graphic (coloured and BW)."""
+
+    # Embed graphic (full cell background)
+    if item.graphic:
+        gpath = os.path.join(graphics_dir, item.graphic)
+        data_uri = embed_image(gpath)
+        if data_uri:
+            dwg.add(dwg.image(
+                href=data_uri,
+                insert=(x, y),
+                size=(cell_w_px, cell_h_px),
+            ))
+
+    center_x = x + cell_w_px / 2
+
+    # Line 1 — heading (e.g. "In Loving Memory Of")
+    if item.line_1:
+        dwg.add(dwg.text(
+            str(item.line_1),
+            insert=(center_x, y + 28 * PX_PER_MM),
+            font_size=f"{line1_pt * PT_TO_MM}mm",
+            font_family="Georgia", text_anchor="middle", fill=text_fill,
+        ))
+
+    # Line 2 — name (large)
+    if item.line_2:
+        dwg.add(dwg.text(
+            str(item.line_2),
+            insert=(center_x, y + 45 * PX_PER_MM),
+            font_size=f"{line2_pt * PT_TO_MM}mm",
+            font_family="Georgia", text_anchor="middle", fill=text_fill,
+        ))
+
+    # Line 3 — additional text with word-wrap and adaptive font size
+    if item.line_3:
+        line3_text = str(item.line_3).strip()
+        if line3_text:
+            lines = []
+            for raw_line in line3_text.split("\n"):
+                if raw_line.strip():
+                    lines.extend(split_line_to_fit(raw_line, 40))
+            if len(lines) == 1:
+                lines = split_line_to_fit(lines[0], 30)
+            lines = lines[:5]
+
+            # Adaptive font size based on total character count
+            total_chars = sum(len(l) for l in lines)
+            if 10 <= total_chars <= 30:
+                font_pt = line1_pt
+            elif 31 <= total_chars <= 90:
+                font_pt = line1_pt * 0.9
+            else:
+                font_pt = line3_pt
+
+            text_el = dwg.text(
+                "",
+                insert=(center_x, y + 57 * PX_PER_MM),
+                font_size=f"{font_pt * PT_TO_MM}mm",
+                font_family="Georgia", text_anchor="middle", fill=text_fill,
+            )
+            for i, line in enumerate(lines):
+                tspan = dwg.tspan(
+                    line.strip(),
+                    x=[center_x],
+                    dy=["0" if i == 0 else "1.2em"],
+                )
+                text_el.add(tspan)
+            dwg.add(text_el)
 
 
 @register("regular_stakes_graphic_coloured")
 class RegularStakesGraphicColoured(BaseProcessor):
     display_name = "Regular Stake — Coloured Graphic"
 
-    def generate_svg(self, item: OrderItem, output_dir: str) -> ProcessorResult:
-        try:
-            filename = self.build_filename(item)
-            filepath = os.path.join(output_dir, filename)
+    # 3×3 grid on 439.8×289.9mm page, 140×90mm cells
+    page_width_mm = 439.8
+    page_height_mm = 289.9
+    cell_width_mm = 140
+    cell_height_mm = 90
+    grid_cols = 3
+    grid_rows = 3
 
-            # Dimensions for regular stake: 140mm x 90mm
-            w_mm, h_mm = 140, 90
-            dwg = svgwrite.Drawing(
-                filepath,
-                size=(f"{w_mm}mm", f"{h_mm}mm"),
-                viewBox=f"0 0 {w_mm} {h_mm}",
-            )
+    line1_size_pt = 17 * 1.2
+    line2_size_pt = 25 * 1.2
+    line3_size_pt = 12 * 1.1
 
-            # Background
-            dwg.add(dwg.rect(insert=(0, 0), size=(w_mm, h_mm), fill="#f5f0e8"))
-
-            # Border
-            dwg.add(dwg.rect(
-                insert=(2, 2), size=(w_mm - 4, h_mm - 4),
-                fill="none", stroke="#8B7355", stroke_width=0.8,
-            ))
-
-            # Graphic placeholder (left side)
-            graphic_name = item.graphic or "No graphic"
-            if graphic_name.lower().endswith(".png"):
-                graphic_name = graphic_name[:-4]
-            dwg.add(dwg.rect(
-                insert=(5, 10), size=(40, 40),
-                fill="#e0d8c8", stroke="#8B7355", stroke_width=0.3,
-            ))
-            dwg.add(dwg.text(
-                graphic_name,
-                insert=(25, 55), text_anchor="middle",
-                font_size="4", font_family="Georgia", fill="#666",
-            ))
-
-            # Text lines (right side)
-            x_text = 55
-            lines = [
-                (item.line_1, 25, "7", "bold"),
-                (item.line_2, 40, "5.5", "normal"),
-                (item.line_3, 52, "5", "italic"),
-            ]
-            for text, y, size, weight in lines:
-                if text:
-                    dwg.add(dwg.text(
-                        text,
-                        insert=(x_text, y), text_anchor="start",
-                        font_size=size, font_family="Georgia",
-                        font_weight=weight if weight != "italic" else "normal",
-                        font_style="italic" if weight == "italic" else "normal",
-                        fill="#333",
-                    ))
-
-            # Colour indicator
-            colour_hex = {
-                "Copper": "#B87333", "Gold": "#FFD700", "Silver": "#C0C0C0",
-                "Stone": "#8B8680", "Marble": "#E8E0D8",
-            }.get(item.colour, "#C0C0C0")
-            dwg.add(dwg.rect(
-                insert=(0, h_mm - 3), size=(w_mm, 3), fill=colour_hex,
-            ))
-
-            dwg.save()
-            return ProcessorResult(success=True, svg_path=filepath)
-
-        except Exception as e:
-            return ProcessorResult(success=False, error=str(e))
+    def render_cell(self, dwg, item, x, y):
+        _render_regular_graphic_cell(
+            dwg, item, x, y, self.graphics_dir,
+            self.cell_width_px, self.cell_height_px,
+            self.line1_size_pt, self.line2_size_pt, self.line3_size_pt,
+            text_fill="black",
+        )
 
 
 @register("regular_stakes_graphic_bw")
 class RegularStakesGraphicBW(BaseProcessor):
     display_name = "Regular Stake — B&W Graphic"
 
-    def generate_svg(self, item: OrderItem, output_dir: str) -> ProcessorResult:
-        try:
-            filename = self.build_filename(item)
-            filepath = os.path.join(output_dir, filename)
+    # BW uses a slightly larger page
+    page_width_mm = 480
+    page_height_mm = 330
+    cell_width_mm = 140
+    cell_height_mm = 90
+    grid_cols = 3
+    grid_rows = 3
 
-            w_mm, h_mm = 140, 90
-            dwg = svgwrite.Drawing(
-                filepath,
-                size=(f"{w_mm}mm", f"{h_mm}mm"),
-                viewBox=f"0 0 {w_mm} {h_mm}",
-            )
+    line1_size_pt = 17 * 1.2
+    line2_size_pt = 25 * 1.2
+    line3_size_pt = 12 * 1.1
 
-            # Black background
-            dwg.add(dwg.rect(insert=(0, 0), size=(w_mm, h_mm), fill="#1a1a1a"))
-
-            # Border
-            dwg.add(dwg.rect(
-                insert=(2, 2), size=(w_mm - 4, h_mm - 4),
-                fill="none", stroke="#fff", stroke_width=0.8,
-            ))
-
-            # Graphic placeholder
-            graphic_name = item.graphic or "No graphic"
-            if graphic_name.lower().endswith(".png"):
-                graphic_name = graphic_name[:-4]
-            dwg.add(dwg.rect(
-                insert=(5, 10), size=(40, 40),
-                fill="#333", stroke="#666", stroke_width=0.3,
-            ))
-            dwg.add(dwg.text(
-                graphic_name,
-                insert=(25, 55), text_anchor="middle",
-                font_size="4", font_family="Georgia", fill="#999",
-            ))
-
-            # Text lines
-            x_text = 55
-            lines = [
-                (item.line_1, 25, "7", "bold"),
-                (item.line_2, 40, "5.5", "normal"),
-                (item.line_3, 52, "5", "italic"),
-            ]
-            for text, y, size, weight in lines:
-                if text:
-                    dwg.add(dwg.text(
-                        text,
-                        insert=(x_text, y), text_anchor="start",
-                        font_size=size, font_family="Georgia",
-                        font_weight=weight if weight != "italic" else "normal",
-                        font_style="italic" if weight == "italic" else "normal",
-                        fill="#fff",
-                    ))
-
-            dwg.save()
-            return ProcessorResult(success=True, svg_path=filepath)
-
-        except Exception as e:
-            return ProcessorResult(success=False, error=str(e))
+    def render_cell(self, dwg, item, x, y):
+        _render_regular_graphic_cell(
+            dwg, item, x, y, self.graphics_dir,
+            self.cell_width_px, self.cell_height_px,
+            self.line1_size_pt, self.line2_size_pt, self.line3_size_pt,
+            text_fill="black",
+        )

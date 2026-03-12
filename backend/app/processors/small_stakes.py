@@ -1,78 +1,110 @@
-"""Small Stakes — graphic coloured and graphic B&W."""
+"""Small Stakes — graphic coloured and graphic B&W.
+
+Ported from AmazonPhotoProcessor 2 / coloured_small_stakes_template_processor.py.
+Print sheet: 480×290 mm, 3×3 grid, cell 108×75 mm (9 per page).
+Grid is bottom-right aligned on the page.
+"""
 
 import os
 import svgwrite
 
-from app.processors.base import BaseProcessor, OrderItem, ProcessorResult
+from app.processors.base import (
+    BaseProcessor, OrderItem, PX_PER_MM, PT_TO_MM,
+    embed_image, split_line_to_fit,
+)
 from app.processors.registry import register
 
-W_MM, H_MM = 100, 60
+
+def _render_small_cell(
+    dwg, item, x, y, graphics_dir, cell_w_px, cell_h_px,
+    text_fill="black",
+):
+    """Render a small stake cell — graphic + centred text."""
+    if item.graphic:
+        gpath = os.path.join(graphics_dir, item.graphic)
+        data_uri = embed_image(gpath)
+        if data_uri:
+            dwg.add(dwg.image(
+                href=data_uri, insert=(x, y),
+                size=(cell_w_px, cell_h_px),
+                preserveAspectRatio="xMidYMid meet",
+            ))
+
+    center_x = x + cell_w_px / 2
+    center_y = y + cell_h_px / 2
+    pt_to_mm = PT_TO_MM
+
+    # Line 1 — 3.33pt, 15mm above centre
+    if item.line_1:
+        lines = split_line_to_fit(str(item.line_1), 30)
+        el = dwg.text("", insert=(center_x, center_y - 15 * PX_PER_MM),
+                       font_size="3.33pt", font_family="Georgia",
+                       text_anchor="middle", fill=text_fill)
+        for i, ln in enumerate(lines):
+            el.add(dwg.tspan(ln.strip(), x=[center_x],
+                             dy=["0" if i == 0 else "1.2em"]))
+        dwg.add(el)
+
+    # Line 2 — 2.5mm, centred
+    if item.line_2:
+        lines = split_line_to_fit(str(item.line_2), 30)
+        el = dwg.text("", insert=(center_x, center_y),
+                       font_size="2.5mm", font_family="Georgia",
+                       text_anchor="middle", fill=text_fill)
+        for i, ln in enumerate(lines):
+            el.add(dwg.tspan(ln.strip(), x=[center_x],
+                             dy=["0" if i == 0 else "1.2em"]))
+        dwg.add(el)
+
+    # Line 3 — 3.33pt, 10mm below centre
+    if item.line_3:
+        lines = split_line_to_fit(str(item.line_3), 30)[:5]
+        if lines:
+            el = dwg.text("", insert=(center_x, center_y + 10 * PX_PER_MM),
+                           font_size="3.33pt", font_family="Georgia",
+                           text_anchor="middle", fill=text_fill)
+            for i, ln in enumerate(lines):
+                el.add(dwg.tspan(ln.strip(), x=[center_x],
+                                 dy=["0" if i == 0 else "1.2em"]))
+            dwg.add(el)
+
+
+class _SmallStakeBase(BaseProcessor):
+    """Shared layout for small stakes — 480×290 mm page, 108×75 mm cells, 3×3 grid."""
+    page_width_mm = 480
+    page_height_mm = 290
+    cell_width_mm = 108
+    cell_height_mm = 75
+    grid_cols = 3
+    grid_rows = 3
+    corner_radius_mm = 6
+
+    @property
+    def x_offset_px(self):
+        """Bottom-right aligned: grid flush to right edge."""
+        grid_w = self.cell_width_mm * self.grid_cols
+        return (self.page_width_mm - grid_w) * PX_PER_MM
+
+    @property
+    def y_offset_px(self):
+        """Bottom-right aligned: grid flush to bottom edge."""
+        grid_h = self.cell_height_mm * self.grid_rows
+        return (self.page_height_mm - grid_h) * PX_PER_MM
 
 
 @register("small_stakes_graphic_coloured")
-class SmallStakesGraphicColoured(BaseProcessor):
+class SmallStakesGraphicColoured(_SmallStakeBase):
     display_name = "Small Stake — Coloured Graphic"
 
-    def generate_svg(self, item: OrderItem, output_dir: str) -> ProcessorResult:
-        try:
-            filename = self.build_filename(item)
-            filepath = os.path.join(output_dir, filename)
-            dwg = svgwrite.Drawing(filepath, size=(f"{W_MM}mm", f"{H_MM}mm"), viewBox=f"0 0 {W_MM} {H_MM}")
-
-            dwg.add(dwg.rect(insert=(0, 0), size=(W_MM, H_MM), fill="#f5f0e8"))
-            dwg.add(dwg.rect(insert=(1.5, 1.5), size=(W_MM - 3, H_MM - 3), fill="none", stroke="#8B7355", stroke_width=0.6))
-
-            graphic_name = item.graphic or "No graphic"
-            if graphic_name.lower().endswith(".png"):
-                graphic_name = graphic_name[:-4]
-            dwg.add(dwg.rect(insert=(4, 6), size=(28, 28), fill="#e0d8c8", stroke="#8B7355", stroke_width=0.3))
-            dwg.add(dwg.text(graphic_name, insert=(18, 38), text_anchor="middle", font_size="3", font_family="Georgia", fill="#666"))
-
-            x_text = 38
-            lines = [(item.line_1, 16, "5", "bold"), (item.line_2, 28, "4", "normal"), (item.line_3, 38, "3.5", "italic")]
-            for text, y, size, weight in lines:
-                if text:
-                    dwg.add(dwg.text(text, insert=(x_text, y), text_anchor="start", font_size=size, font_family="Georgia",
-                                     font_weight=weight if weight != "italic" else "normal",
-                                     font_style="italic" if weight == "italic" else "normal", fill="#333"))
-
-            colour_hex = {"Copper": "#B87333", "Gold": "#FFD700", "Silver": "#C0C0C0", "Stone": "#8B8680", "Marble": "#E8E0D8"}.get(item.colour, "#C0C0C0")
-            dwg.add(dwg.rect(insert=(0, H_MM - 2), size=(W_MM, 2), fill=colour_hex))
-
-            dwg.save()
-            return ProcessorResult(success=True, svg_path=filepath)
-        except Exception as e:
-            return ProcessorResult(success=False, error=str(e))
+    def render_cell(self, dwg, item, x, y):
+        _render_small_cell(dwg, item, x, y, self.graphics_dir,
+                           self.cell_width_px, self.cell_height_px, "black")
 
 
 @register("small_stakes_graphic_bw")
-class SmallStakesGraphicBW(BaseProcessor):
+class SmallStakesGraphicBW(_SmallStakeBase):
     display_name = "Small Stake — B&W Graphic"
 
-    def generate_svg(self, item: OrderItem, output_dir: str) -> ProcessorResult:
-        try:
-            filename = self.build_filename(item)
-            filepath = os.path.join(output_dir, filename)
-            dwg = svgwrite.Drawing(filepath, size=(f"{W_MM}mm", f"{H_MM}mm"), viewBox=f"0 0 {W_MM} {H_MM}")
-
-            dwg.add(dwg.rect(insert=(0, 0), size=(W_MM, H_MM), fill="#1a1a1a"))
-            dwg.add(dwg.rect(insert=(1.5, 1.5), size=(W_MM - 3, H_MM - 3), fill="none", stroke="#fff", stroke_width=0.6))
-
-            graphic_name = item.graphic or "No graphic"
-            if graphic_name.lower().endswith(".png"):
-                graphic_name = graphic_name[:-4]
-            dwg.add(dwg.rect(insert=(4, 6), size=(28, 28), fill="#333", stroke="#666", stroke_width=0.3))
-            dwg.add(dwg.text(graphic_name, insert=(18, 38), text_anchor="middle", font_size="3", font_family="Georgia", fill="#999"))
-
-            x_text = 38
-            lines = [(item.line_1, 16, "5", "bold"), (item.line_2, 28, "4", "normal"), (item.line_3, 38, "3.5", "italic")]
-            for text, y, size, weight in lines:
-                if text:
-                    dwg.add(dwg.text(text, insert=(x_text, y), text_anchor="start", font_size=size, font_family="Georgia",
-                                     font_weight=weight if weight != "italic" else "normal",
-                                     font_style="italic" if weight == "italic" else "normal", fill="#fff"))
-
-            dwg.save()
-            return ProcessorResult(success=True, svg_path=filepath)
-        except Exception as e:
-            return ProcessorResult(success=False, error=str(e))
+    def render_cell(self, dwg, item, x, y):
+        _render_small_cell(dwg, item, x, y, self.graphics_dir,
+                           self.cell_width_px, self.cell_height_px, "black")

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Upload, Play, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, ChevronDown, ChevronUp, Settings } from 'lucide-react'
-import { uploadOrderFile, generateSvgs, fetchJobs, deleteJob, resetJob, svgPreviewUrl, downloadAllUrl } from '@/lib/api'
+import { uploadOrderFile, generateSvgs, fetchJobs, fetchJob, deleteJob, resetJob, svgPreviewUrl, downloadAllUrl } from '@/lib/api'
 
 type JobItem = {
   id: number
@@ -171,7 +171,7 @@ export default function Home() {
               {jobs.map(job => (
                 <button
                   key={job.id}
-                  onClick={() => setActiveJob(job)}
+                  onClick={() => fetchJob(job.id).then(setActiveJob).catch(() => {})}
                   className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
                     activeJob?.id === job.id
                       ? 'border-indigo-300 bg-indigo-50'
@@ -309,7 +309,7 @@ export default function Home() {
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Line 1</th>
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Line 2</th>
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Processor</th>
-                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Preview</th>
+                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Sheet</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -346,10 +346,10 @@ export default function Home() {
                             <td className="py-2 px-2">
                               {item.status === 'complete' && item.svg_path ? (
                                 <a href={svgPreviewUrl(item.id)} target="_blank" rel="noopener noreferrer"
-                                  className="inline-block w-16 h-10 rounded border border-gray-200 overflow-hidden hover:border-indigo-400 transition-colors bg-white">
-                                  <img src={svgPreviewUrl(item.id)} alt="SVG" className="w-full h-full object-contain" />
+                                  className="text-xs text-indigo-600 hover:underline" title="View print sheet">
+                                  view
                                 </a>
-                              ) : item.status === 'error' ? (
+                              ) : item.status === 'error' || item.status === 'unmatched' ? (
                                 <span className="text-xs text-red-400" title={item.error || ''}>✕</span>
                               ) : (
                                 <span className="text-xs text-gray-300">—</span>
@@ -361,6 +361,38 @@ export default function Home() {
                     </table>
                   </div>
                 </div>
+
+                {/* Print sheets — unique batch SVGs */}
+                {completeCount > 0 && (() => {
+                  const sheets = new Map<string, {id: number; path: string; items: JobItem[]}>()
+                  activeJob.items.forEach(item => {
+                    if (item.status === 'complete' && item.svg_path) {
+                      const existing = sheets.get(item.svg_path)
+                      if (existing) {
+                        existing.items.push(item)
+                      } else {
+                        sheets.set(item.svg_path, {id: item.id, path: item.svg_path, items: [item]})
+                      }
+                    }
+                  })
+                  return (
+                    <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Print Sheets ({sheets.size})</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        {Array.from(sheets.values()).map(sheet => (
+                          <a key={sheet.path} href={svgPreviewUrl(sheet.id)} target="_blank" rel="noopener noreferrer"
+                            className="block border border-gray-200 rounded-lg overflow-hidden hover:border-indigo-400 transition-colors bg-gray-50">
+                            <img src={svgPreviewUrl(sheet.id)} alt="Print sheet" className="w-full h-auto" />
+                            <div className="px-3 py-2 border-t border-gray-100 bg-white">
+                              <p className="text-xs font-mono text-gray-500 truncate">{sheet.path.split(/[\\/]/).pop()}</p>
+                              <p className="text-xs text-gray-400">{sheet.items.length} item{sheet.items.length !== 1 ? 's' : ''} on this sheet</p>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
               </>
             )}
 

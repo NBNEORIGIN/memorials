@@ -1,9 +1,11 @@
-"""SVG generation endpoint — dispatches job items to their assigned processors."""
+"""SVG generation endpoint — batches job items by processor type into print sheets."""
 
 import io
 import os
 import zipfile
+from collections import defaultdict
 from datetime import datetime
+from typing import Dict, List, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
@@ -19,9 +21,31 @@ from app.processors.registry import get_processor
 router = APIRouter(prefix="/api/generate", tags=["SVG Generation"])
 
 
+def _build_order_item(item: JobItem) -> OrderItem:
+    return OrderItem(
+        order_id=item.order_id or "",
+        order_item_id=item.order_item_id or "",
+        sku=item.sku,
+        colour=item.colour or "",
+        memorial_type=item.memorial_type or "",
+        decoration_type=item.decoration_type,
+        theme=item.theme,
+        graphic=item.graphic,
+        line_1=item.line_1,
+        line_2=item.line_2,
+        line_3=item.line_3,
+        image_path=item.image_path,
+    )
+
+
 @router.post("/{job_id}", response_model=JobOut)
 def generate_svgs(job_id: int, db: Session = Depends(get_db)):
-    """Generate SVGs for all ready items in a job."""
+    """Generate batch print-sheet SVGs for all ready items in a job.
+
+    Items are grouped by processor_key, then batched into print sheets
+    (e.g. 9 regular stakes per page, 4 large stakes per page, etc.).
+    All items in a batch share the same SVG file path.
+    """
     job = db.query(Job).options(joinedload(Job.items)).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -34,55 +58,67 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
 
     success_count = 0
     error_count = 0
-    graphics_dir = settings.UPLOAD_DIR  # Graphics loaded from uploads or assets
+    graphics_dir = settings.UPLOAD_DIR
 
+    # ── Group ready items by processor_key ────────────────────────
+    groups: Dict[str, List[JobItem]] = defaultdict(list)
     for item in job.items:
         if item.status != "ready":
             continue
-
         if not item.processor_key:
             item.status = "error"
             item.error = "No processor assigned"
             error_count += 1
             continue
+        groups[item.processor_key].append(item)
 
-        processor = get_processor(item.processor_key, graphics_dir, settings.OUTPUT_DIR)
+    # ── Generate batch print sheets per processor type ────────────
+    for proc_key, db_items in groups.items():
+        processor = get_processor(proc_key, graphics_dir, settings.OUTPUT_DIR)
         if processor is None:
-            item.status = "error"
-            item.error = f"Processor '{item.processor_key}' not registered"
-            error_count += 1
+            for it in db_items:
+                it.status = "error"
+                it.error = f"Processor '{proc_key}' not registered"
+                error_count += 1
             continue
 
-        order_item = OrderItem(
-            order_id=item.order_id or "",
-            order_item_id=item.order_item_id or "",
-            sku=item.sku,
-            colour=item.colour or "",
-            memorial_type=item.memorial_type or "",
-            decoration_type=item.decoration_type,
-            theme=item.theme,
-            graphic=item.graphic,
-            line_1=item.line_1,
-            line_2=item.line_2,
-            line_3=item.line_3,
-            image_path=item.image_path,
-        )
+        # Sort by colour priority (copper→gold→silver→stone→marble)
+        colour_order = {"copper": 0, "gold": 1, "silver": 2, "stone": 3, "marble": 4}
+        db_items.sort(key=lambda it: colour_order.get((it.colour or "").lower(), 99))
 
-        try:
-            result = processor.generate_svg(order_item, settings.OUTPUT_DIR)
-            if result.success:
-                item.status = "complete"
-                item.svg_path = result.svg_path
-                success_count += 1
-            else:
-                item.status = "error"
-                item.error = result.error or "Unknown processor error"
-                error_count += 1
-        except Exception as e:
-            item.status = "error"
-            item.error = str(e)
-            error_count += 1
+        # Build OrderItem objects, keeping parallel index with db_items
+        order_items = [_build_order_item(it) for it in db_items]
 
+        batch_size = processor.batch_size
+        batch_num = 1
+
+        for start in range(0, len(order_items), batch_size):
+            batch_order_items = order_items[start:start + batch_size]
+            batch_db_items = db_items[start:start + batch_size]
+
+            try:
+                result = processor.generate_batch_svg(
+                    batch_order_items, batch_num, settings.OUTPUT_DIR,
+                )
+                if result.success:
+                    for it in batch_db_items:
+                        it.status = "complete"
+                        it.svg_path = result.svg_path
+                    success_count += len(batch_db_items)
+                else:
+                    for it in batch_db_items:
+                        it.status = "error"
+                        it.error = result.error or "Unknown batch error"
+                    error_count += len(batch_db_items)
+            except Exception as e:
+                for it in batch_db_items:
+                    it.status = "error"
+                    it.error = str(e)
+                error_count += len(batch_db_items)
+
+            batch_num += 1
+
+    # ── Update job status ─────────────────────────────────────────
     if error_count == 0:
         job.status = "complete"
     elif success_count > 0:
@@ -140,10 +176,14 @@ def download_all_svgs(job_id: int, db: Session = Depends(get_db)):
     if not completed:
         raise HTTPException(status_code=404, detail="No completed SVG files to download")
 
+    # Deduplicate — batch sheets are shared by multiple items
+    seen_paths: set[str] = set()
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for item in completed:
-            zf.write(item.svg_path, os.path.basename(item.svg_path))
+            if item.svg_path not in seen_paths:
+                seen_paths.add(item.svg_path)
+                zf.write(item.svg_path, os.path.basename(item.svg_path))
     buf.seek(0)
 
     filename = f"{job.filename or f'job_{job.id}'}_svgs.zip"

@@ -1,98 +1,142 @@
-"""Metal processors — Large, XL, Medium, Small metal graphic stakes."""
+"""Metal processors — Large, XL, Medium, Small metal graphic stakes.
+
+Ported from AmazonPhotoProcessor 2 / base_metal_processor.py + size subclasses.
+Metal plaques use a single-row layout on a 480mm-wide page.
+batch_size = page_width // cell_width (items in one row).
+Exact dimensions from original:
+  Large:  127  × 76.2 mm → 3 per row
+  XL:     152.4 × 101.6 mm → 3 per row
+  Medium: 101.6 × 50.8 mm → 4 per row
+  Small:   76.2 × 38.1 mm → 6 per row
+"""
 
 import os
 import svgwrite
 
-from app.processors.base import BaseProcessor, OrderItem, ProcessorResult
+from app.processors.base import (
+    BaseProcessor, OrderItem, PX_PER_MM, PT_TO_MM,
+    embed_image, split_line_to_fit,
+)
 from app.processors.registry import register
 
-METAL_DIMS = {
-    "large": (200, 120),
-    "xl": (250, 150),
-    "medium": (160, 100),
-    "small": (120, 80),
-}
+
+def _render_metal_cell(
+    dwg, item, x, y, graphics_dir, cell_w_px, cell_h_px,
+    text_fill="black",
+):
+    """Render a metal plaque cell — graphic + centred text."""
+    if item.graphic:
+        gpath = os.path.join(graphics_dir, item.graphic)
+        data_uri = embed_image(gpath)
+        if data_uri:
+            dwg.add(dwg.image(
+                href=data_uri, insert=(x, y),
+                size=(cell_w_px, cell_h_px),
+                preserveAspectRatio="xMidYMid meet",
+            ))
+
+    center_x = x + cell_w_px / 2
+    center_y = y + cell_h_px / 2
+
+    # Line 1 — heading
+    if item.line_1:
+        lines = split_line_to_fit(str(item.line_1), 30)
+        el = dwg.text("", insert=(center_x, center_y - 12 * PX_PER_MM),
+                       font_size="3.33pt", font_family="Georgia",
+                       text_anchor="middle", fill=text_fill)
+        for i, ln in enumerate(lines):
+            el.add(dwg.tspan(ln.strip(), x=[center_x],
+                             dy=["0" if i == 0 else "1.2em"]))
+        dwg.add(el)
+
+    # Line 2 — name
+    if item.line_2:
+        lines = split_line_to_fit(str(item.line_2), 30)
+        el = dwg.text("", insert=(center_x, center_y),
+                       font_size="2.5mm", font_family="Georgia",
+                       text_anchor="middle", fill=text_fill)
+        for i, ln in enumerate(lines):
+            el.add(dwg.tspan(ln.strip(), x=[center_x],
+                             dy=["0" if i == 0 else "1.2em"]))
+        dwg.add(el)
+
+    # Line 3 — additional text
+    if item.line_3:
+        lines = split_line_to_fit(str(item.line_3), 30)[:5]
+        if lines:
+            el = dwg.text("", insert=(center_x, center_y + 10 * PX_PER_MM),
+                           font_size="3.33pt", font_family="Georgia",
+                           text_anchor="middle", fill=text_fill)
+            for i, ln in enumerate(lines):
+                el.add(dwg.tspan(ln.strip(), x=[center_x],
+                                 dy=["0" if i == 0 else "1.2em"]))
+            dwg.add(el)
 
 
-def _metal_svg(item: OrderItem, output_dir: str, size_key: str, filepath: str) -> ProcessorResult:
-    try:
-        w_mm, h_mm = METAL_DIMS[size_key]
-        dwg = svgwrite.Drawing(filepath, size=(f"{w_mm}mm", f"{h_mm}mm"), viewBox=f"0 0 {w_mm} {h_mm}")
+class _MetalBase(BaseProcessor):
+    """Shared base for metal plaques — 480mm wide page, single-row layout."""
+    page_width_mm: float = 480
+    corner_radius_mm = 0
+    grid_rows = 1
 
-        # Brushed metal background
-        dwg.add(dwg.rect(insert=(0, 0), size=(w_mm, h_mm), fill="#d4d0c8"))
-        # Metallic gradient effect
-        grad = dwg.defs.add(dwg.linearGradient(id="metal_sheen", x1="0%", y1="0%", x2="100%", y2="100%"))
-        grad.add_stop_color(0, "#fff", opacity=0.3)
-        grad.add_stop_color(0.5, "#fff", opacity=0)
-        grad.add_stop_color(1, "#fff", opacity=0.15)
-        dwg.add(dwg.rect(insert=(0, 0), size=(w_mm, h_mm), fill="url(#metal_sheen)"))
+    @property
+    def page_height_mm(self):
+        return self.cell_height_mm + 2   # tight fit — 1mm margin each side
 
-        # Border
-        dwg.add(dwg.rect(insert=(2, 2), size=(w_mm - 4, h_mm - 4), fill="none", stroke="#8B7355", stroke_width=0.8))
+    @property
+    def grid_cols(self):
+        return int(self.page_width_mm // self.cell_width_mm)
 
-        # Text — centered layout for metal plaques
-        cx = w_mm / 2
-        lines = [
-            (item.line_1, h_mm * 0.3, str(w_mm * 0.05), "bold"),
-            (item.line_2, h_mm * 0.5, str(w_mm * 0.04), "normal"),
-            (item.line_3, h_mm * 0.65, str(w_mm * 0.035), "italic"),
-        ]
-        for text, y, size, weight in lines:
-            if text:
-                dwg.add(dwg.text(
-                    text, insert=(cx, y), text_anchor="middle",
-                    font_size=size, font_family="Georgia",
-                    font_weight=weight if weight != "italic" else "normal",
-                    font_style="italic" if weight == "italic" else "normal",
-                    fill="#333",
-                ))
+    @property
+    def x_offset_px(self):
+        """Centre the row of items on the page."""
+        used = self.cell_width_mm * self.grid_cols
+        return ((self.page_width_mm - used) / 2) * PX_PER_MM
 
-        # Material label
-        colour_name = item.colour or "Metal"
-        dwg.add(dwg.text(
-            f"{colour_name} · {item.memorial_type}",
-            insert=(cx, h_mm - 6), text_anchor="middle",
-            font_size="3.5", font_family="Arial", fill="#999",
-        ))
-
-        dwg.save()
-        return ProcessorResult(success=True, svg_path=filepath)
-    except Exception as e:
-        return ProcessorResult(success=False, error=str(e))
+    @property
+    def y_offset_px(self):
+        return 1.0 * PX_PER_MM   # 1mm top margin
 
 
 @register("large_metal_graphic")
-class LargeMetalGraphic(BaseProcessor):
+class LargeMetalGraphic(_MetalBase):
     display_name = "Large Metal — Graphic"
+    cell_width_mm = 127.0
+    cell_height_mm = 76.2
 
-    def generate_svg(self, item: OrderItem, output_dir: str) -> ProcessorResult:
-        filepath = os.path.join(output_dir, self.build_filename(item))
-        return _metal_svg(item, output_dir, "large", filepath)
+    def render_cell(self, dwg, item, x, y):
+        _render_metal_cell(dwg, item, x, y, self.graphics_dir,
+                           self.cell_width_px, self.cell_height_px, "black")
 
 
 @register("xl_metal_graphic")
-class XLMetalGraphic(BaseProcessor):
+class XLMetalGraphic(_MetalBase):
     display_name = "XL Metal — Graphic"
+    cell_width_mm = 152.4
+    cell_height_mm = 101.6
 
-    def generate_svg(self, item: OrderItem, output_dir: str) -> ProcessorResult:
-        filepath = os.path.join(output_dir, self.build_filename(item))
-        return _metal_svg(item, output_dir, "xl", filepath)
+    def render_cell(self, dwg, item, x, y):
+        _render_metal_cell(dwg, item, x, y, self.graphics_dir,
+                           self.cell_width_px, self.cell_height_px, "black")
 
 
 @register("medium_metal_graphic")
-class MediumMetalGraphic(BaseProcessor):
+class MediumMetalGraphic(_MetalBase):
     display_name = "Medium Metal — Graphic"
+    cell_width_mm = 101.6
+    cell_height_mm = 50.8
 
-    def generate_svg(self, item: OrderItem, output_dir: str) -> ProcessorResult:
-        filepath = os.path.join(output_dir, self.build_filename(item))
-        return _metal_svg(item, output_dir, "medium", filepath)
+    def render_cell(self, dwg, item, x, y):
+        _render_metal_cell(dwg, item, x, y, self.graphics_dir,
+                           self.cell_width_px, self.cell_height_px, "black")
 
 
 @register("small_metal_graphic")
-class SmallMetalGraphic(BaseProcessor):
+class SmallMetalGraphic(_MetalBase):
     display_name = "Small Metal — Graphic"
+    cell_width_mm = 76.2
+    cell_height_mm = 38.1
 
-    def generate_svg(self, item: OrderItem, output_dir: str) -> ProcessorResult:
-        filepath = os.path.join(output_dir, self.build_filename(item))
-        return _metal_svg(item, output_dir, "small", filepath)
+    def render_cell(self, dwg, item, x, y):
+        _render_metal_cell(dwg, item, x, y, self.graphics_dir,
+                           self.cell_width_px, self.cell_height_px, "black")
