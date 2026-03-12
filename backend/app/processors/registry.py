@@ -39,10 +39,12 @@ def list_registered() -> list[str]:
 # Import all processor modules so they self-register via @register decorator.
 # Add new processor imports here as they are ported.
 def _import_all():
-    try:
-        from app.processors import regular_stakes_graphic  # noqa: F401
-    except ImportError:
-        pass
+    from app.processors import regular_stakes_graphic  # noqa: F401
+    from app.processors import regular_stakes_photo  # noqa: F401
+    from app.processors import large_stakes  # noqa: F401
+    from app.processors import small_stakes  # noqa: F401
+    from app.processors import heart_stakes  # noqa: F401
+    from app.processors import metal_stakes  # noqa: F401
 
 
 _import_all()

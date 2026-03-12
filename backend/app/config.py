@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/memorials"
+    DATABASE_URL: str = "sqlite:///./memorials.db"
     SECRET_KEY: str = "change-me"
     UPLOAD_DIR: str = "./uploads"
     OUTPUT_DIR: str = "./output"
