@@ -58,7 +58,7 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
 
     success_count = 0
     error_count = 0
-    graphics_dir = settings.UPLOAD_DIR
+    graphics_dir = settings.GRAPHICS_DIR
 
     # ── Group ready items by processor_key ────────────────────────
     groups: Dict[str, List[JobItem]] = defaultdict(list)
