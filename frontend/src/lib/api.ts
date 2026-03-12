@@ -12,10 +12,10 @@ export async function fetchJob(jobId: number) {
   return res.json()
 }
 
-export async function uploadOrderFile(file: File, enrich: boolean = true) {
+export async function uploadOrderFile(file: File) {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(`${API_URL}/api/jobs/upload?enrich=${enrich}`, {
+  const res = await fetch(`${API_URL}/api/jobs/upload?enrich=true`, {
     method: 'POST',
     body: formData,
   })
@@ -73,7 +73,24 @@ export async function resetJob(jobId: number) {
   return res.json()
 }
 
+export async function updateJobItem(itemId: number, fields: { graphic?: string; line_1?: string; line_2?: string; line_3?: string }) {
+  const res = await fetch(`${API_URL}/api/jobs/items/${itemId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Update failed')
+  }
+  return res.json()
+}
+
 export function svgPreviewUrl(itemId: number) {
+  return `${API_URL}/api/generate/svg/${itemId}`
+}
+
+export function svgDownloadUrl(itemId: number) {
   return `${API_URL}/api/generate/svg/${itemId}`
 }
 

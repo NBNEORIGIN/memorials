@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import settings
 from app.database import get_db
 from app.models import Job, JobItem, SkuMapping
-from app.schemas import JobOut, JobSummaryOut
+from app.schemas import JobOut, JobSummaryOut, JobItemOut, JobItemUpdate
 from app.ingestion.amazon import process_report_file
 
 router = APIRouter(prefix="/api/jobs", tags=["Order Processing"])
@@ -113,6 +113,19 @@ async def upload_order_file(
 
     # Re-query with items loaded
     return get_job(job.id, db)
+
+
+@router.patch("/items/{item_id}", response_model=JobItemOut)
+def update_job_item(item_id: int, body: JobItemUpdate, db: Session = Depends(get_db)):
+    """Update personalisation fields on a job item (inline editing)."""
+    item = db.query(JobItem).filter(JobItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(item, field, value)
+    db.commit()
+    db.refresh(item)
+    return item
 
 
 @router.delete("/{job_id}", status_code=204)

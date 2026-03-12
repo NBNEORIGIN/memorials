@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Upload, Play, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, ChevronDown, ChevronUp, Settings } from 'lucide-react'
-import { uploadOrderFile, generateSvgs, fetchJobs, fetchJob, deleteJob, resetJob, svgPreviewUrl, downloadAllUrl } from '@/lib/api'
+import { Upload, Play, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, Settings, Pencil, Check, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { uploadOrderFile, generateSvgs, fetchJobs, fetchJob, deleteJob, resetJob, updateJobItem, svgPreviewUrl, svgDownloadUrl } from '@/lib/api'
 
 type JobItem = {
   id: number
@@ -53,6 +53,82 @@ const JOB_STATUS_STYLES: Record<string, string> = {
   pending: 'bg-gray-100 text-gray-600',
 }
 
+function EditableCell({ value, onSave, multiline = false }: {
+  value: string
+  onSave: (v: string) => Promise<void>
+  multiline?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const [saving, setSaving] = useState(false)
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
+
+  useEffect(() => { setDraft(value) }, [value])
+  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+
+  const save = async () => {
+    if (draft === value) { setEditing(false); return }
+    setSaving(true)
+    try {
+      await onSave(draft)
+      setEditing(false)
+    } catch (_e) { setDraft(value) }
+    setSaving(false)
+  }
+
+  const cancel = () => { setDraft(value); setEditing(false) }
+
+  if (!editing) {
+    return (
+      <div
+        className="group flex items-center gap-1 cursor-pointer min-h-[28px]"
+        onClick={() => setEditing(true)}
+        title="Click to edit"
+      >
+        <span className={`text-xs ${value ? 'text-gray-700' : 'text-gray-300'}`}>
+          {value || '—'}
+        </span>
+        <Pencil className="w-3 h-3 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+      </div>
+    )
+  }
+
+  if (multiline) {
+    return (
+      <div className="flex flex-col gap-1">
+        <textarea
+          ref={inputRef as any}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Escape') cancel() }}
+          rows={3}
+          className="w-full text-xs border border-indigo-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 resize-none"
+          disabled={saving}
+        />
+        <div className="flex gap-1">
+          <button onClick={save} disabled={saving} className="text-green-600 hover:text-green-700"><Check className="w-3.5 h-3.5" /></button>
+          <button onClick={cancel} className="text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        ref={inputRef as any}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
+        className="w-full text-xs border border-indigo-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        disabled={saving}
+      />
+      <button onClick={save} disabled={saving} className="text-green-600 hover:text-green-700"><Check className="w-3.5 h-3.5" /></button>
+      <button onClick={cancel} className="text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>
+    </div>
+  )
+}
+
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [activeJob, setActiveJob] = useState<Job | null>(null)
@@ -60,7 +136,7 @@ export default function Home() {
   const [generating, setGenerating] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [enrich, setEnrich] = useState(false)
+  const [expandedRow, setExpandedRow] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -74,7 +150,7 @@ export default function Home() {
     try {
       let lastJob: Job | null = null
       for (let i = 0; i < files.length; i++) {
-        const job = await uploadOrderFile(files[i], enrich)
+        const job = await uploadOrderFile(files[i])
         lastJob = job
       }
       if (lastJob) {
@@ -87,7 +163,7 @@ export default function Home() {
     } finally {
       setUploading(false)
     }
-  }, [enrich])
+  }, [])
 
   const handleGenerate = useCallback(async () => {
     if (!activeJob) return
@@ -133,9 +209,29 @@ export default function Home() {
     handleUpload(e.dataTransfer.files)
   }, [handleUpload])
 
+  const handleItemUpdate = useCallback(async (itemId: number, field: string, value: string) => {
+    await updateJobItem(itemId, { [field]: value })
+    if (activeJob) {
+      const refreshed = await fetchJob(activeJob.id)
+      setActiveJob(refreshed)
+    }
+  }, [activeJob])
+
   const readyCount = activeJob?.items.filter(i => i.status === 'ready').length || 0
   const completeCount = activeJob?.items.filter(i => i.status === 'complete').length || 0
   const errorCount = activeJob?.items.filter(i => i.status === 'error' || i.status === 'unmatched').length || 0
+
+  // Compute unique print sheets
+  const sheets = new Map<string, {id: number; path: string; items: JobItem[]}>()
+  if (activeJob) {
+    activeJob.items.forEach(item => {
+      if (item.status === 'complete' && item.svg_path) {
+        const existing = sheets.get(item.svg_path)
+        if (existing) { existing.items.push(item) }
+        else { sheets.set(item.svg_path, { id: item.id, path: item.svg_path, items: [item] }) }
+      }
+    })
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -210,7 +306,7 @@ export default function Home() {
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
                 dragActive
                   ? 'border-indigo-400 bg-indigo-50'
                   : 'border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50'
@@ -224,18 +320,11 @@ export default function Home() {
                 className="hidden"
                 onChange={(e) => handleUpload(e.target.files)}
               />
-              <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-indigo-500' : 'text-gray-400'}`} />
+              <Upload className={`w-8 h-8 mx-auto mb-2 ${dragActive ? 'text-indigo-500' : 'text-gray-400'}`} />
               <p className="text-sm font-medium text-gray-700">
-                {uploading ? 'Uploading & processing...' : 'Drop Amazon order .txt files here'}
+                {uploading ? 'Uploading & downloading personalisation data...' : 'Drop Amazon order .txt files here'}
               </p>
-              <p className="text-xs text-gray-400 mt-1">or click to browse</p>
-            </div>
-            <div className="flex items-center gap-2 -mt-3">
-              <input type="checkbox" id="enrich" checked={enrich} onChange={e => { e.stopPropagation(); setEnrich(e.target.checked) }}
-                className="rounded border-gray-300" />
-              <label htmlFor="enrich" className="text-xs text-gray-500 select-none cursor-pointer" onClick={e => e.stopPropagation()}>
-                Download personalisation data (graphics, text lines, photos from Amazon ZIPs)
-              </label>
+              <p className="text-xs text-gray-400 mt-1">or click to browse — personalisation data is downloaded automatically</p>
             </div>
 
             {/* Error banner */}
@@ -275,124 +364,145 @@ export default function Home() {
                         {generating ? 'Generating...' : 'Generate SVGs'}
                       </button>
                       {completeCount > 0 && (
-                        <>
-                          <a
-                            href={downloadAllUrl(activeJob.id)}
-                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-                          >
-                            <Download className="w-4 h-4" />
-                            Download ZIP
-                          </a>
-                          <button
-                            onClick={handleReset}
-                            className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-100 transition-colors"
-                          >
-                            Re-generate
-                          </button>
-                        </>
+                        <button
+                          onClick={handleReset}
+                          className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          Re-generate
+                        </button>
                       )}
                     </div>
                   </div>
 
-                  {/* Items table */}
+                  {/* Items table — editable */}
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-gray-100">
-                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">#</th>
-                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Status</th>
+                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase w-8">#</th>
+                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase w-16">Status</th>
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">SKU</th>
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Type</th>
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Colour</th>
-                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Deco</th>
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Graphic</th>
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Line 1</th>
                           <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Line 2</th>
-                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Processor</th>
-                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase">Sheet</th>
+                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400 uppercase w-8"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {activeJob.items.map((item, idx) => (
-                          <tr
-                            key={item.id}
-                            className={`border-b border-gray-50 hover:bg-gray-50 ${
-                              item.status === 'error' || item.status === 'unmatched' ? 'bg-red-50/50' : ''
-                            }`}
-                          >
-                            <td className="py-2 px-2 text-gray-400">{idx + 1}</td>
-                            <td className="py-2 px-2">
-                              <div className="flex items-center gap-1">
-                                {STATUS_ICON[item.status] || STATUS_ICON.pending}
-                                <span className="text-xs">{item.status}</span>
-                              </div>
-                            </td>
-                            <td className="py-2 px-2 font-mono text-xs text-gray-700">{item.sku}</td>
-                            <td className="py-2 px-2 text-gray-600">{item.memorial_type || '—'}</td>
-                            <td className="py-2 px-2 text-gray-600">{item.colour || '—'}</td>
-                            <td className="py-2 px-2 text-gray-600">{item.decoration_type || '—'}</td>
-                            <td className="py-2 px-2 text-gray-600 truncate max-w-[120px]">{item.graphic || '—'}</td>
-                            <td className="py-2 px-2 text-gray-600 truncate max-w-[100px]">{item.line_1 || '—'}</td>
-                            <td className="py-2 px-2 text-gray-600 truncate max-w-[100px]">{item.line_2 || '—'}</td>
-                            <td className="py-2 px-2">
-                              {item.processor_key ? (
-                                <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded text-gray-600 font-mono">
-                                  {item.processor_key}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-red-500">{item.error || 'none'}</span>
-                              )}
-                            </td>
-                            <td className="py-2 px-2">
-                              {item.status === 'complete' && item.svg_path ? (
-                                <a href={svgPreviewUrl(item.id)} target="_blank" rel="noopener noreferrer"
-                                  className="text-xs text-indigo-600 hover:underline" title="View print sheet">
-                                  view
-                                </a>
-                              ) : item.status === 'error' || item.status === 'unmatched' ? (
-                                <span className="text-xs text-red-400" title={item.error || ''}>✕</span>
-                              ) : (
-                                <span className="text-xs text-gray-300">—</span>
-                              )}
-                            </td>
-                          </tr>
+                          <>
+                            <tr
+                              key={item.id}
+                              className={`border-b border-gray-50 hover:bg-gray-50 ${
+                                item.status === 'error' || item.status === 'unmatched' ? 'bg-red-50/50' : ''
+                              }`}
+                            >
+                              <td className="py-2 px-2 text-gray-400 text-xs">{idx + 1}</td>
+                              <td className="py-2 px-2">
+                                <div className="flex items-center gap-1">
+                                  {STATUS_ICON[item.status] || STATUS_ICON.pending}
+                                </div>
+                              </td>
+                              <td className="py-2 px-2 font-mono text-xs text-gray-700">{item.sku}</td>
+                              <td className="py-2 px-2 text-xs text-gray-600">{item.memorial_type || '—'}</td>
+                              <td className="py-2 px-2 text-xs text-gray-600">{item.colour || '—'}</td>
+                              <td className="py-2 px-2 max-w-[140px]">
+                                <EditableCell
+                                  value={item.graphic || ''}
+                                  onSave={v => handleItemUpdate(item.id, 'graphic', v)}
+                                />
+                              </td>
+                              <td className="py-2 px-2 max-w-[150px]">
+                                <EditableCell
+                                  value={item.line_1 || ''}
+                                  onSave={v => handleItemUpdate(item.id, 'line_1', v)}
+                                />
+                              </td>
+                              <td className="py-2 px-2 max-w-[150px]">
+                                <EditableCell
+                                  value={item.line_2 || ''}
+                                  onSave={v => handleItemUpdate(item.id, 'line_2', v)}
+                                />
+                              </td>
+                              <td className="py-2 px-2">
+                                <button
+                                  onClick={() => setExpandedRow(expandedRow === item.id ? null : item.id)}
+                                  className="text-gray-300 hover:text-gray-500"
+                                >
+                                  {expandedRow === item.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </button>
+                              </td>
+                            </tr>
+                            {expandedRow === item.id && (
+                              <tr key={`${item.id}-expanded`} className="bg-gray-50/50">
+                                <td colSpan={9} className="px-4 py-3">
+                                  <div className="grid grid-cols-3 gap-4 text-xs">
+                                    <div>
+                                      <label className="text-gray-400 font-medium uppercase text-[10px]">Line 3</label>
+                                      <EditableCell
+                                        value={item.line_3 || ''}
+                                        onSave={v => handleItemUpdate(item.id, 'line_3', v)}
+                                        multiline
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-gray-400 font-medium uppercase text-[10px]">Processor</label>
+                                      <p className="text-xs font-mono text-gray-600 mt-1">{item.processor_key || '—'}</p>
+                                      {item.error && (
+                                        <p className="text-xs text-red-500 mt-1">{item.error}</p>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <label className="text-gray-400 font-medium uppercase text-[10px]">Order</label>
+                                      <p className="text-xs text-gray-600 mt-1">{item.order_id || '—'} / {item.order_item_id || '—'}</p>
+                                      <label className="text-gray-400 font-medium uppercase text-[10px] mt-2 block">Decoration</label>
+                                      <p className="text-xs text-gray-600 mt-1">{item.decoration_type || '—'}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 </div>
 
-                {/* Print sheets — unique batch SVGs */}
-                {completeCount > 0 && (() => {
-                  const sheets = new Map<string, {id: number; path: string; items: JobItem[]}>()
-                  activeJob.items.forEach(item => {
-                    if (item.status === 'complete' && item.svg_path) {
-                      const existing = sheets.get(item.svg_path)
-                      if (existing) {
-                        existing.items.push(item)
-                      } else {
-                        sheets.set(item.svg_path, {id: item.id, path: item.svg_path, items: [item]})
-                      }
-                    }
-                  })
-                  return (
-                    <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Print Sheets ({sheets.size})</h3>
-                      <div className="grid grid-cols-2 gap-4">
-                        {Array.from(sheets.values()).map(sheet => (
-                          <a key={sheet.path} href={svgPreviewUrl(sheet.id)} target="_blank" rel="noopener noreferrer"
-                            className="block border border-gray-200 rounded-lg overflow-hidden hover:border-indigo-400 transition-colors bg-gray-50">
-                            <img src={svgPreviewUrl(sheet.id)} alt="Print sheet" className="w-full h-auto" />
-                            <div className="px-3 py-2 border-t border-gray-100 bg-white">
-                              <p className="text-xs font-mono text-gray-500 truncate">{sheet.path.split(/[\\/]/).pop()}</p>
-                              <p className="text-xs text-gray-400">{sheet.items.length} item{sheet.items.length !== 1 ? 's' : ''} on this sheet</p>
+                {/* Print sheets — direct download per sheet */}
+                {sheets.size > 0 && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-5">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Print Sheets ({sheets.size})</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      {Array.from(sheets.values()).map(sheet => {
+                        const fname = sheet.path.split(/[\\/]/).pop() || 'sheet.svg'
+                        return (
+                          <div key={sheet.path} className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                            <a href={svgPreviewUrl(sheet.id)} target="_blank" rel="noopener noreferrer" className="block hover:opacity-90">
+                              <img src={svgPreviewUrl(sheet.id)} alt="Print sheet" className="w-full h-auto" />
+                            </a>
+                            <div className="px-3 py-2 border-t border-gray-100 bg-white flex items-center justify-between">
+                              <div>
+                                <p className="text-xs font-mono text-gray-500 truncate">{fname}</p>
+                                <p className="text-xs text-gray-400">{sheet.items.length} item{sheet.items.length !== 1 ? 's' : ''}</p>
+                              </div>
+                              <a
+                                href={svgDownloadUrl(sheet.id)}
+                                download={fname}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 transition-colors"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                Download SVG
+                              </a>
                             </div>
-                          </a>
-                        ))}
-                      </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                  )
-                })()}
+                  </div>
+                )}
               </>
             )}
 

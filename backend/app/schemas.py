@@ -102,6 +102,13 @@ class JobItemOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class JobItemUpdate(BaseModel):
+    graphic: Optional[str] = None
+    line_1: Optional[str] = None
+    line_2: Optional[str] = None
+    line_3: Optional[str] = None
+
+
 # ── Jobs ──
 class JobOut(BaseModel):
     id: int
