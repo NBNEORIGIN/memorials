@@ -35,6 +35,7 @@ desktop.ini
 uploads/
 output/
 *.pkl
+*.db
 
 # Docker
 docker-compose.override.yml
