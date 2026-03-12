@@ -87,7 +87,7 @@ export default function Home() {
     } finally {
       setUploading(false)
     }
-  }, [])
+  }, [enrich])
 
   const handleGenerate = useCallback(async () => {
     if (!activeJob) return

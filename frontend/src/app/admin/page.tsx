@@ -43,6 +43,10 @@ export default function AdminPage() {
   const [showAddType, setShowAddType] = useState(false)
   const [newType, setNewType] = useState({ name: '', width: '', height: '' })
 
+  // Add SKU form
+  const [showAddSku, setShowAddSku] = useState(false)
+  const [newSku, setNewSku] = useState({ sku: '', colour_id: 0, memorial_type_id: 0, processor_id: 0, decoration_type_id: 0, theme_id: 0 })
+
   useEffect(() => {
     loadAll()
   }, [])
@@ -65,6 +69,22 @@ export default function AdminPage() {
       setShowAddColour(false)
       setNewColour({ name: '', hex_code: '#000000', is_bw: false })
       const c = await fetchColours(); setColours(c)
+    }
+  }
+
+  async function addSku() {
+    if (!newSku.sku || !newSku.colour_id || !newSku.memorial_type_id || !newSku.processor_id) return
+    const payload: any = { sku: newSku.sku, colour_id: newSku.colour_id, memorial_type_id: newSku.memorial_type_id, processor_id: newSku.processor_id }
+    if (newSku.decoration_type_id) payload.decoration_type_id = newSku.decoration_type_id
+    if (newSku.theme_id) payload.theme_id = newSku.theme_id
+    const res = await fetch(`${API_URL}/api/skus/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (res.ok) {
+      setShowAddSku(false)
+      setNewSku({ sku: '', colour_id: 0, memorial_type_id: 0, processor_id: 0, decoration_type_id: 0, theme_id: 0 })
+      const s = await fetchSkuMappings(); setSkus(s)
     }
   }
 
@@ -151,8 +171,53 @@ export default function AdminPage() {
                         className="pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-64"
                       />
                     </div>
+                    <button onClick={() => setShowAddSku(!showAddSku)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                      <Plus className="w-4 h-4" /> Add SKU
+                    </button>
                   </div>
                 </div>
+
+                {showAddSku && (
+                  <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">SKU</label>
+                        <input type="text" value={newSku.sku} onChange={e => setNewSku({ ...newSku, sku: e.target.value })}
+                          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 w-44 font-mono" placeholder="e.g. OD045004_1" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Colour</label>
+                        <select value={newSku.colour_id} onChange={e => setNewSku({ ...newSku, colour_id: Number(e.target.value) })}
+                          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                          <option value={0}>Select...</option>
+                          {colours.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
+                        <select value={newSku.memorial_type_id} onChange={e => setNewSku({ ...newSku, memorial_type_id: Number(e.target.value) })}
+                          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                          <option value={0}>Select...</option>
+                          {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Processor</label>
+                        <select value={newSku.processor_id} onChange={e => setNewSku({ ...newSku, processor_id: Number(e.target.value) })}
+                          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                          <option value={0}>Select...</option>
+                          {processors.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+                        </select>
+                      </div>
+                      <button onClick={addSku} disabled={!newSku.sku || !newSku.colour_id || !newSku.memorial_type_id || !newSku.processor_id}
+                        className="flex items-center gap-1.5 px-4 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                        <Check className="w-4 h-4" /> Save
+                      </button>
+                      <button onClick={() => setShowAddSku(false)} className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
