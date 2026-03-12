@@ -60,6 +60,7 @@ export default function Home() {
   const [generating, setGenerating] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [enrich, setEnrich] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -73,7 +74,7 @@ export default function Home() {
     try {
       let lastJob: Job | null = null
       for (let i = 0; i < files.length; i++) {
-        const job = await uploadOrderFile(files[i])
+        const job = await uploadOrderFile(files[i], enrich)
         lastJob = job
       }
       if (lastJob) {
@@ -212,9 +213,16 @@ export default function Home() {
               />
               <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-indigo-500' : 'text-gray-400'}`} />
               <p className="text-sm font-medium text-gray-700">
-                {uploading ? 'Uploading...' : 'Drop Amazon order .txt files here'}
+                {uploading ? 'Uploading & processing...' : 'Drop Amazon order .txt files here'}
               </p>
               <p className="text-xs text-gray-400 mt-1">or click to browse</p>
+            </div>
+            <div className="flex items-center gap-2 -mt-3">
+              <input type="checkbox" id="enrich" checked={enrich} onChange={e => { e.stopPropagation(); setEnrich(e.target.checked) }}
+                className="rounded border-gray-300" />
+              <label htmlFor="enrich" className="text-xs text-gray-500 select-none cursor-pointer" onClick={e => e.stopPropagation()}>
+                Download personalisation data (graphics, text lines, photos from Amazon ZIPs)
+              </label>
             </div>
 
             {/* Error banner */}

@@ -12,10 +12,10 @@ export async function fetchJob(jobId: number) {
   return res.json()
 }
 
-export async function uploadOrderFile(file: File) {
+export async function uploadOrderFile(file: File, enrich: boolean = true) {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(`${API_URL}/api/jobs/upload`, {
+  const res = await fetch(`${API_URL}/api/jobs/upload?enrich=${enrich}`, {
     method: 'POST',
     body: formData,
   })

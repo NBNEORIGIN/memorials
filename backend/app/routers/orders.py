@@ -5,13 +5,14 @@ import shutil
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.database import get_db
 from app.models import Job, JobItem, SkuMapping
 from app.schemas import JobOut, JobSummaryOut
+from app.ingestion.amazon import process_report_file
 
 router = APIRouter(prefix="/api/jobs", tags=["Order Processing"])
 
@@ -32,9 +33,15 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 @router.post("/upload", response_model=JobOut)
 async def upload_order_file(
     file: UploadFile = File(...),
+    enrich: bool = Query(True, description="Download ZIPs and extract XML personalisation data"),
     db: Session = Depends(get_db),
 ):
-    """Upload an Amazon order .txt file. Parses orders, resolves SKUs, creates job items."""
+    """Upload an Amazon order .txt file. Parses orders, resolves SKUs, creates job items.
+
+    When enrich=True (default), downloads customisation ZIPs from Amazon,
+    extracts XML personalisation data (graphic, lines, photos).
+    Set enrich=False for quick parsing without downloads.
+    """
     if not file.filename.lower().endswith(".txt"):
         raise HTTPException(status_code=400, detail="Only .txt files accepted")
 
@@ -45,7 +52,11 @@ async def upload_order_file(
 
     # Parse the tab-delimited Amazon order file
     try:
-        items_data = parse_amazon_txt(upload_path)
+        if enrich:
+            images_dir = os.path.join(settings.UPLOAD_DIR, "images")
+            items_data = process_report_file(upload_path, images_dir)
+        else:
+            items_data = parse_amazon_txt(upload_path)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Failed to parse file: {e}")
 
