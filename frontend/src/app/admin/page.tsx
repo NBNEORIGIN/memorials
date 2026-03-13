@@ -62,6 +62,8 @@ export default function AdminPage() {
   const [layoutVals, setLayoutVals] = useState<LayoutValues | null>(null)
   const [layoutDefaults, setLayoutDefaults] = useState<any>(null)
   const [layoutIsNew, setLayoutIsNew] = useState(true)
+  const [layoutId, setLayoutId] = useState<number | null>(null)
+  const [layoutSku, setLayoutSku] = useState<string>('')
   const [layoutSaving, setLayoutSaving] = useState(false)
   const [layoutMsg, setLayoutMsg] = useState<string | null>(null)
   const [previewKey, setPreviewKey] = useState(0)
@@ -477,9 +479,11 @@ export default function AdminPage() {
                             try {
                               const defaults = await fetchLayoutDefaults(p.key)
                               setLayoutDefaults(defaults)
-                              const existing = layouts.find(l => l.processor_key === p.key)
+                              setLayoutSku('')
+                              const existing = layouts.find(l => l.processor_key === p.key && !l.sku)
                               if (existing) {
                                 setLayoutIsNew(false)
+                                setLayoutId(existing.id)
                                 setLayoutVals({
                                   line1_y_mm: existing.line1_y_mm ?? defaults.line1_y_mm,
                                   line2_y_mm: existing.line2_y_mm ?? defaults.line2_y_mm,
@@ -495,6 +499,7 @@ export default function AdminPage() {
                                 })
                               } else {
                                 setLayoutIsNew(true)
+                                setLayoutId(null)
                                 setLayoutVals({
                                   line1_y_mm: defaults.line1_y_mm,
                                   line2_y_mm: defaults.line2_y_mm,
@@ -536,6 +541,52 @@ export default function AdminPage() {
 
                     {editingProcessor && layoutVals && layoutDefaults && (
                       <div className="space-y-5">
+                        {/* SKU-specific override */}
+                        <div className="flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-3">
+                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">SKU Override</label>
+                          <input
+                            type="text"
+                            value={layoutSku}
+                            onChange={e => {
+                              const newSku = e.target.value
+                              setLayoutSku(newSku)
+                              const existing = layouts.find(l =>
+                                l.processor_key === editingProcessor &&
+                                (newSku ? l.sku === newSku : !l.sku)
+                              )
+                              if (existing) {
+                                setLayoutIsNew(false)
+                                setLayoutId(existing.id)
+                                setLayoutVals({
+                                  line1_y_mm: existing.line1_y_mm ?? layoutDefaults.line1_y_mm,
+                                  line2_y_mm: existing.line2_y_mm ?? layoutDefaults.line2_y_mm,
+                                  line3_y_mm: existing.line3_y_mm ?? layoutDefaults.line3_y_mm,
+                                  line1_size_pt: existing.line1_size_pt ?? layoutDefaults.line1_size_pt,
+                                  line2_size_pt: existing.line2_size_pt ?? layoutDefaults.line2_size_pt,
+                                  line3_size_pt: existing.line3_size_pt ?? layoutDefaults.line3_size_pt,
+                                  text_x_frac: existing.text_x_frac ?? layoutDefaults.text_x_frac,
+                                  font_family: existing.font_family ?? layoutDefaults.font_family,
+                                  text_fill: existing.text_fill ?? layoutDefaults.text_fill,
+                                  max_chars_line3: existing.max_chars_line3 ?? layoutDefaults.max_chars_line3,
+                                  line3_max_rows: existing.line3_max_rows ?? layoutDefaults.line3_max_rows,
+                                })
+                              } else {
+                                setLayoutIsNew(true)
+                                setLayoutId(null)
+                              }
+                              setPreviewKey(k => k + 1)
+                            }}
+                            placeholder="Leave empty for processor default, or enter SKU for specific override"
+                            className="flex-1 text-xs border border-gray-200 rounded px-2.5 py-1.5 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          />
+                          {layoutSku && (
+                            <span className="text-[10px] px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-medium">SKU-specific</span>
+                          )}
+                          {!layoutSku && (
+                            <span className="text-[10px] px-2 py-0.5 bg-gray-200 text-gray-600 rounded-full font-medium">All SKUs</span>
+                          )}
+                        </div>
+
                         {/* Preview + controls */}
                         <div className="grid grid-cols-2 gap-5">
                           {/* Live SVG preview */}
@@ -665,7 +716,8 @@ export default function AdminPage() {
                               setLayoutSaving(true)
                               setLayoutMsg(null)
                               try {
-                                await saveLayout(editingProcessor, layoutVals, layoutIsNew)
+                                const saved = await saveLayout(editingProcessor, layoutVals, layoutIsNew, layoutId ?? undefined, layoutSku || null)
+                                setLayoutId(saved.id)
                                 setLayoutIsNew(false)
                                 const updated = await fetchLayouts()
                                 setLayouts(updated)
@@ -712,7 +764,7 @@ export default function AdminPage() {
                             <button
                               onClick={async () => {
                                 try {
-                                  await deleteLayout(editingProcessor)
+                                  if (layoutId) await deleteLayout(layoutId)
                                   setLayoutIsNew(true)
                                   const updated = await fetchLayouts()
                                   setLayouts(updated)

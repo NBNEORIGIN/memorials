@@ -2,6 +2,9 @@
 
 Photo stakes embed a customer photo alongside text.
 Same grid layout as graphic stakes: 3×3 on 439.8×289.9mm (coloured) or 480×330mm (BW).
+
+Smart text layout: text is constrained to the zone right of the photo,
+with dynamic font sizing and word-wrap that respects intentional newlines.
 """
 
 import os
@@ -9,9 +12,13 @@ import svgwrite
 
 from app.processors.base import (
     BaseProcessor, OrderItem, PX_PER_MM, PT_TO_MM,
-    embed_image, split_line_to_fit,
+    embed_image, split_line_to_fit, smart_wrap_text,
 )
 from app.processors.registry import register
+
+# Photo border radius in mm (black rounded border around customer photo)
+PHOTO_BORDER_RADIUS_MM = 6.0
+PHOTO_BORDER_STROKE_MM = 1.2
 
 
 def _render_photo_cell(
@@ -22,16 +29,23 @@ def _render_photo_cell(
     text_fill: str = "black",
     layout: dict | None = None,
 ) -> None:
-    """Shared cell renderer for photo stakes — graphic + photo + text."""
+    """Shared cell renderer for photo stakes — graphic + photo + text.
+
+    Text is positioned in the zone to the right of the photo.
+    Font size adapts dynamically so text never overlaps the photo.
+    Customer newlines (poems, dates) are preserved.
+    """
     lo = layout or {}
-    l1y = lo.get("line1_y_mm", 28.0)
-    l2y = lo.get("line2_y_mm", 45.0)
-    l3y = lo.get("line3_y_mm", 57.0)
+    cell_w_mm = cell_w_px / PX_PER_MM
+    cell_h_mm = cell_h_px / PX_PER_MM
+
+    # Layout values
+    l1y = lo.get("line1_y_mm", cell_h_mm * 0.22)
+    l2y = lo.get("line2_y_mm", cell_h_mm * 0.42)
+    l3y = lo.get("line3_y_mm", cell_h_mm * 0.60)
     l1pt = lo.get("line1_size_pt", line1_pt)
     l2pt = lo.get("line2_size_pt", line2_pt)
     l3pt = lo.get("line3_size_pt", line3_pt)
-    # Default text X shifted right (0.65) to avoid overlapping the photo area
-    tx = lo.get("text_x_frac", 0.65)
     ff = lo.get("font_family", "Georgia")
     tf = lo.get("text_fill", text_fill)
     gx = lo.get("graphic_x_frac", 0.0)
@@ -41,8 +55,8 @@ def _render_photo_cell(
     px_frac = lo.get("photo_x_frac", 0.05)
     pw_frac = lo.get("photo_w_frac", 0.35)
     ph_frac = lo.get("photo_h_frac", 0.6)
-    max_chars = lo.get("max_chars_line3", 40)
-    max_rows = lo.get("line3_max_rows", 5)
+    max_rows = lo.get("line3_max_rows", 6)
+    border_r_mm = lo.get("photo_border_radius_mm", PHOTO_BORDER_RADIUS_MM)
 
     # Embed graphic background
     if item.graphic:
@@ -55,79 +69,110 @@ def _render_photo_cell(
                 size=(cell_w_px * gw, cell_h_px * gh),
             ))
 
-    # Embed customer photo — vertically centred within cell
+    # ── Photo placement ──
     photo_w = cell_w_px * pw_frac
     photo_h = cell_h_px * ph_frac
     photo_x = x + cell_w_px * px_frac
-    photo_y = y + (cell_h_px - photo_h) / 2  # true vertical centre
+    photo_y = y + (cell_h_px - photo_h) / 2
+
+    has_photo = False
     if item.image_path:
         img_uri = embed_image(item.image_path)
         if img_uri:
-            # Create clip path for clean photo cropping
+            has_photo = True
             clip_id = f"photo-clip-{id(item)}-{int(x)}-{int(y)}"
             clip = dwg.defs.add(dwg.clipPath(id=clip_id))
             clip.add(dwg.rect(
                 insert=(photo_x, photo_y),
                 size=(photo_w, photo_h),
-                rx=2 * PX_PER_MM, ry=2 * PX_PER_MM,
+                rx=border_r_mm * PX_PER_MM,
+                ry=border_r_mm * PX_PER_MM,
             ))
             dwg.add(dwg.image(
                 href=img_uri, insert=(photo_x, photo_y),
                 size=(photo_w, photo_h),
-                preserveAspectRatio="xMidYMid slice",
+                preserveAspectRatio="xMidYMin slice",
                 clip_path=f"url(#{clip_id})",
             ))
+            # Black border around photo
+            dwg.add(dwg.rect(
+                insert=(photo_x, photo_y),
+                size=(photo_w, photo_h),
+                rx=border_r_mm * PX_PER_MM,
+                ry=border_r_mm * PX_PER_MM,
+                fill="none", stroke="black",
+                stroke_width=PHOTO_BORDER_STROKE_MM * PX_PER_MM,
+            ))
 
-    center_x = x + cell_w_px * tx
+    # ── Text zone calculation ──
+    # Text is constrained to the area right of the photo
+    if has_photo:
+        photo_right_mm = (px_frac + pw_frac) * cell_w_mm
+        text_gap_mm = 3.0  # gap between photo and text
+        text_left_mm = photo_right_mm + text_gap_mm
+        text_right_mm = cell_w_mm - 2.0  # small right margin
+        text_zone_width_mm = text_right_mm - text_left_mm
+        text_center_x = x + ((text_left_mm + text_right_mm) / 2) * PX_PER_MM
+    else:
+        # No photo — centre text in cell
+        text_zone_width_mm = cell_w_mm * 0.85
+        text_center_x = x + cell_w_px * 0.5
 
-    # Line 1
+    # ── Line 1 — heading ──
     if item.line_1:
-        dwg.add(dwg.text(
-            str(item.line_1),
-            insert=(center_x, y + l1y * PX_PER_MM),
-            font_size=f"{l1pt * PT_TO_MM}mm",
-            font_family=ff, text_anchor="middle", fill=tf,
-        ))
+        line1_text = str(item.line_1)
+        # Smart-wrap line 1 within text zone
+        l1_lines, l1_final_pt = smart_wrap_text(
+            line1_text, text_zone_width_mm, l1pt,
+            max_rows=2, min_font_pt=10.0, shrink_step_pt=1.0,
+        )
+        if l1_lines:
+            el = dwg.text(
+                "", insert=(text_center_x, y + l1y * PX_PER_MM),
+                font_size=f"{l1_final_pt * PT_TO_MM}mm",
+                font_family=ff, text_anchor="middle", fill=tf,
+            )
+            for i, ln in enumerate(l1_lines):
+                el.add(dwg.tspan(ln.strip(), x=[text_center_x],
+                                 dy=["0" if i == 0 else "1.2em"]))
+            dwg.add(el)
 
-    # Line 2
+    # ── Line 2 — name (larger) ──
     if item.line_2:
-        dwg.add(dwg.text(
-            str(item.line_2),
-            insert=(center_x, y + l2y * PX_PER_MM),
-            font_size=f"{l2pt * PT_TO_MM}mm",
-            font_family=ff, text_anchor="middle", fill=tf,
-        ))
+        line2_text = str(item.line_2)
+        l2_lines, l2_final_pt = smart_wrap_text(
+            line2_text, text_zone_width_mm, l2pt,
+            max_rows=2, min_font_pt=12.0, shrink_step_pt=1.5,
+        )
+        if l2_lines:
+            el = dwg.text(
+                "", insert=(text_center_x, y + l2y * PX_PER_MM),
+                font_size=f"{l2_final_pt * PT_TO_MM}mm",
+                font_family=ff, text_anchor="middle", fill=tf,
+            )
+            for i, ln in enumerate(l2_lines):
+                el.add(dwg.tspan(ln.strip(), x=[text_center_x],
+                                 dy=["0" if i == 0 else "1.2em"]))
+            dwg.add(el)
 
-    # Line 3 with word-wrap
+    # ── Line 3 — additional text with smart wrapping ──
     if item.line_3:
         line3_text = str(item.line_3).strip()
         if line3_text:
-            lines = []
-            for raw in line3_text.split("\n"):
-                if raw.strip():
-                    lines.extend(split_line_to_fit(raw, max_chars))
-            if len(lines) == 1:
-                lines = split_line_to_fit(lines[0], max(max_chars - 10, 20))
-            lines = lines[:max_rows]
-
-            total_chars = sum(len(l) for l in lines)
-            if 10 <= total_chars <= 30:
-                font_pt = l1pt
-            elif 31 <= total_chars <= 90:
-                font_pt = l1pt * 0.9
-            else:
-                font_pt = l3pt
-
-            text_el = dwg.text(
-                "", insert=(center_x, y + l3y * PX_PER_MM),
-                font_size=f"{font_pt * PT_TO_MM}mm",
-                font_family=ff, text_anchor="middle", fill=tf,
+            l3_lines, l3_final_pt = smart_wrap_text(
+                line3_text, text_zone_width_mm, l3pt,
+                max_rows=max_rows, min_font_pt=8.0, shrink_step_pt=0.5,
             )
-            for i, line in enumerate(lines):
-                tspan = dwg.tspan(line.strip(), x=[center_x],
-                                  dy=["0" if i == 0 else "1.2em"])
-                text_el.add(tspan)
-            dwg.add(text_el)
+            if l3_lines:
+                el = dwg.text(
+                    "", insert=(text_center_x, y + l3y * PX_PER_MM),
+                    font_size=f"{l3_final_pt * PT_TO_MM}mm",
+                    font_family=ff, text_anchor="middle", fill=tf,
+                )
+                for i, ln in enumerate(l3_lines):
+                    el.add(dwg.tspan(ln.strip(), x=[text_center_x],
+                                     dy=["0" if i == 0 else "1.2em"]))
+                dwg.add(el)
 
 
 @register("regular_stakes_photo_coloured")
@@ -150,7 +195,7 @@ class RegularStakesPhotoColoured(BaseProcessor):
             dwg, item, x, y, self.graphics_dir,
             self.cell_width_px, self.cell_height_px,
             self.line1_size_pt, self.line2_size_pt, self.line3_size_pt,
-            text_fill="black", layout=self.layout_overrides,
+            text_fill="black", layout=item.layout_overrides or self.layout_overrides,
         )
 
 
@@ -174,5 +219,5 @@ class RegularStakesPhotoBW(BaseProcessor):
             dwg, item, x, y, self.graphics_dir,
             self.cell_width_px, self.cell_height_px,
             self.line1_size_pt, self.line2_size_pt, self.line3_size_pt,
-            text_fill="black", layout=self.layout_overrides,
+            text_fill="black", layout=item.layout_overrides or self.layout_overrides,
         )

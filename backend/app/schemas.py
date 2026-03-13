@@ -126,6 +126,7 @@ class JobOut(BaseModel):
 class CellLayoutOut(BaseModel):
     id: int
     processor_key: str
+    sku: Optional[str] = None
     label: Optional[str] = None
     line1_y_mm: Optional[float] = None
     line2_y_mm: Optional[float] = None
@@ -153,6 +154,7 @@ class CellLayoutOut(BaseModel):
 
 class CellLayoutCreate(BaseModel):
     processor_key: str
+    sku: Optional[str] = None
     label: Optional[str] = None
     line1_y_mm: Optional[float] = None
     line2_y_mm: Optional[float] = None

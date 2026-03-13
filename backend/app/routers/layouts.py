@@ -27,18 +27,27 @@ def list_layouts(db: Session = Depends(get_db)):
 
 
 @router.get("/{processor_key}", response_model=CellLayoutOut)
-def get_layout(processor_key: str, db: Session = Depends(get_db)):
-    layout = db.query(CellLayout).filter(CellLayout.processor_key == processor_key).first()
+def get_layout(processor_key: str, sku: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    q = db.query(CellLayout).filter(CellLayout.processor_key == processor_key)
+    if sku:
+        q = q.filter(CellLayout.sku == sku)
+    else:
+        q = q.filter(CellLayout.sku.is_(None))
+    layout = q.first()
     if not layout:
-        raise HTTPException(status_code=404, detail=f"No layout for '{processor_key}'")
+        raise HTTPException(status_code=404, detail=f"No layout for '{processor_key}' (sku={sku})")
     return layout
 
 
 @router.post("/", response_model=CellLayoutOut, status_code=201)
 def create_layout(data: CellLayoutCreate, db: Session = Depends(get_db)):
-    existing = db.query(CellLayout).filter(CellLayout.processor_key == data.processor_key).first()
-    if existing:
-        raise HTTPException(status_code=409, detail=f"Layout for '{data.processor_key}' already exists")
+    q = db.query(CellLayout).filter(CellLayout.processor_key == data.processor_key)
+    if data.sku:
+        q = q.filter(CellLayout.sku == data.sku)
+    else:
+        q = q.filter(CellLayout.sku.is_(None))
+    if q.first():
+        raise HTTPException(status_code=409, detail=f"Layout already exists for '{data.processor_key}' sku={data.sku}")
     obj = CellLayout(**data.model_dump(exclude_unset=True))
     db.add(obj)
     db.commit()
@@ -46,11 +55,11 @@ def create_layout(data: CellLayoutCreate, db: Session = Depends(get_db)):
     return obj
 
 
-@router.put("/{processor_key}", response_model=CellLayoutOut)
-def update_layout(processor_key: str, data: CellLayoutUpdate, db: Session = Depends(get_db)):
-    obj = db.query(CellLayout).filter(CellLayout.processor_key == processor_key).first()
+@router.put("/{layout_id}", response_model=CellLayoutOut)
+def update_layout(layout_id: int, data: CellLayoutUpdate, db: Session = Depends(get_db)):
+    obj = db.query(CellLayout).filter(CellLayout.id == layout_id).first()
     if not obj:
-        raise HTTPException(status_code=404, detail=f"No layout for '{processor_key}'")
+        raise HTTPException(status_code=404, detail=f"Layout #{layout_id} not found")
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(obj, k, v)
     db.commit()
@@ -58,11 +67,11 @@ def update_layout(processor_key: str, data: CellLayoutUpdate, db: Session = Depe
     return obj
 
 
-@router.delete("/{processor_key}", status_code=204)
-def delete_layout(processor_key: str, db: Session = Depends(get_db)):
-    obj = db.query(CellLayout).filter(CellLayout.processor_key == processor_key).first()
+@router.delete("/{layout_id}", status_code=204)
+def delete_layout(layout_id: int, db: Session = Depends(get_db)):
+    obj = db.query(CellLayout).filter(CellLayout.id == layout_id).first()
     if not obj:
-        raise HTTPException(status_code=404, detail=f"No layout for '{processor_key}'")
+        raise HTTPException(status_code=404, detail=f"Layout #{layout_id} not found")
     db.delete(obj)
     db.commit()
 

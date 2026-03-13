@@ -134,7 +134,7 @@ class RegularStakesGraphicColoured(BaseProcessor):
             dwg, item, x, y, self.graphics_dir,
             self.cell_width_px, self.cell_height_px,
             self.line1_size_pt, self.line2_size_pt, self.line3_size_pt,
-            text_fill="black", layout=self.layout_overrides,
+            text_fill="black", layout=item.layout_overrides or self.layout_overrides,
         )
 
 
@@ -159,5 +159,5 @@ class RegularStakesGraphicBW(BaseProcessor):
             dwg, item, x, y, self.graphics_dir,
             self.cell_width_px, self.cell_height_px,
             self.line1_size_pt, self.line2_size_pt, self.line3_size_pt,
-            text_fill="black", layout=self.layout_overrides,
+            text_fill="black", layout=item.layout_overrides or self.layout_overrides,
         )

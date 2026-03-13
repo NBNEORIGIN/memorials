@@ -19,30 +19,56 @@ from app.processors.base import OrderItem
 from app.processors.registry import get_processor
 
 
-def _load_layout_overrides(db: Session, processor_key: str) -> dict:
-    """Load CellLayout from DB and return as dict of non-None overrides."""
-    layout = db.query(CellLayout).filter(CellLayout.processor_key == processor_key).first()
-    if not layout:
-        return {}
+_LAYOUT_FIELDS = (
+    "line1_y_mm", "line2_y_mm", "line3_y_mm",
+    "line1_size_pt", "line2_size_pt", "line3_size_pt",
+    "text_x_frac",
+    "graphic_x_frac", "graphic_y_frac", "graphic_w_frac", "graphic_h_frac",
+    "photo_x_frac", "photo_y_frac", "photo_w_frac", "photo_h_frac",
+    "max_chars_line1", "max_chars_line2", "max_chars_line3",
+    "line3_max_rows", "font_family", "text_fill",
+)
+
+
+def _layout_to_dict(layout: CellLayout) -> dict:
+    """Convert a CellLayout row to a dict of non-None overrides."""
     overrides = {}
-    for field in (
-        "line1_y_mm", "line2_y_mm", "line3_y_mm",
-        "line1_size_pt", "line2_size_pt", "line3_size_pt",
-        "text_x_frac",
-        "graphic_x_frac", "graphic_y_frac", "graphic_w_frac", "graphic_h_frac",
-        "photo_x_frac", "photo_y_frac", "photo_w_frac", "photo_h_frac",
-        "max_chars_line1", "max_chars_line2", "max_chars_line3",
-        "line3_max_rows", "font_family", "text_fill",
-    ):
+    for field in _LAYOUT_FIELDS:
         v = getattr(layout, field, None)
         if v is not None:
             overrides[field] = v
     return overrides
 
+
+def _load_layout_overrides(db: Session, processor_key: str, sku: str | None = None) -> dict:
+    """Load layout overrides with SKU-specific → processor-level fallback.
+
+    1. If a CellLayout exists for this (processor_key, sku), use it.
+    2. Else fall back to the processor-level layout (sku IS NULL).
+    3. Else return empty dict (processor class defaults).
+    """
+    if sku:
+        sku_layout = db.query(CellLayout).filter(
+            CellLayout.processor_key == processor_key,
+            CellLayout.sku == sku,
+        ).first()
+        if sku_layout:
+            return _layout_to_dict(sku_layout)
+
+    # Processor-level fallback (sku is NULL)
+    proc_layout = db.query(CellLayout).filter(
+        CellLayout.processor_key == processor_key,
+        CellLayout.sku.is_(None),
+    ).first()
+    if proc_layout:
+        return _layout_to_dict(proc_layout)
+
+    return {}
+
 router = APIRouter(prefix="/api/generate", tags=["SVG Generation"])
 
 
-def _build_order_item(item: JobItem) -> OrderItem:
+def _build_order_item(item: JobItem, layout_overrides: dict | None = None) -> OrderItem:
     return OrderItem(
         order_id=item.order_id or "",
         order_item_id=item.order_item_id or "",
@@ -56,6 +82,7 @@ def _build_order_item(item: JobItem) -> OrderItem:
         line_2=item.line_2,
         line_3=item.line_3,
         image_path=item.image_path,
+        layout_overrides=layout_overrides,
     )
 
 
@@ -95,9 +122,8 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
 
     # ── Generate batch print sheets per processor type ────────────
     for proc_key, db_items in groups.items():
-        overrides = _load_layout_overrides(db, proc_key)
-        processor = get_processor(proc_key, graphics_dir, settings.OUTPUT_DIR,
-                                  layout_overrides=overrides)
+        # Processor-level overrides (fallback for items without SKU-specific layout)
+        processor = get_processor(proc_key, graphics_dir, settings.OUTPUT_DIR)
         if processor is None:
             for it in db_items:
                 it.status = "error"
@@ -109,8 +135,11 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
         colour_order = {"copper": 0, "gold": 1, "silver": 2, "stone": 3, "marble": 4}
         db_items.sort(key=lambda it: colour_order.get((it.colour or "").lower(), 99))
 
-        # Build OrderItem objects, keeping parallel index with db_items
-        order_items = [_build_order_item(it) for it in db_items]
+        # Build OrderItem objects with per-item SKU-specific layout overrides
+        order_items = [
+            _build_order_item(it, _load_layout_overrides(db, proc_key, it.sku))
+            for it in db_items
+        ]
 
         batch_size = processor.batch_size
         batch_num = 1

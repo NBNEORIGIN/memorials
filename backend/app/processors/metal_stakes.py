@@ -117,7 +117,7 @@ class LargeMetalGraphic(_MetalBase):
     def render_cell(self, dwg, item, x, y):
         _render_metal_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)
 
 
 @register("xl_metal_graphic")
@@ -129,7 +129,7 @@ class XLMetalGraphic(_MetalBase):
     def render_cell(self, dwg, item, x, y):
         _render_metal_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)
 
 
 @register("medium_metal_graphic")
@@ -141,7 +141,7 @@ class MediumMetalGraphic(_MetalBase):
     def render_cell(self, dwg, item, x, y):
         _render_metal_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)
 
 
 @register("small_metal_graphic")
@@ -153,4 +153,4 @@ class SmallMetalGraphic(_MetalBase):
     def render_cell(self, dwg, item, x, y):
         _render_metal_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)

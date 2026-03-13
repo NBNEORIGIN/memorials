@@ -12,10 +12,12 @@ export async function fetchJob(jobId: number) {
   return res.json()
 }
 
-export async function uploadOrderFile(file: File) {
+export async function uploadOrderFiles(files: File[]) {
   const formData = new FormData()
-  formData.append('file', file)
-  const res = await fetch(`${API_URL}/api/jobs/upload?enrich=true`, {
+  for (const file of files) {
+    formData.append('files', file)
+  }
+  const res = await fetch(`${API_URL}/api/jobs/upload-multi?enrich=true`, {
     method: 'POST',
     body: formData,
   })
@@ -162,12 +164,20 @@ export async function fetchLayoutDefaults(processorKey: string) {
   return res.json()
 }
 
-export async function saveLayout(processorKey: string, data: Record<string, any>, isNew: boolean) {
+export async function saveLayout(
+  processorKey: string,
+  data: Record<string, any>,
+  isNew: boolean,
+  layoutId?: number,
+  sku?: string | null,
+) {
   const url = isNew
     ? `${API_URL}/api/layouts/`
-    : `${API_URL}/api/layouts/${processorKey}`
+    : `${API_URL}/api/layouts/${layoutId}`
   const method = isNew ? 'POST' : 'PUT'
-  const body = isNew ? { processor_key: processorKey, ...data } : data
+  const body = isNew
+    ? { processor_key: processorKey, ...(sku ? { sku } : {}), ...data }
+    : data
   const res = await fetch(url, {
     method,
     headers: { 'Content-Type': 'application/json' },
@@ -180,8 +190,8 @@ export async function saveLayout(processorKey: string, data: Record<string, any>
   return res.json()
 }
 
-export async function deleteLayout(processorKey: string) {
-  const res = await fetch(`${API_URL}/api/layouts/${processorKey}`, { method: 'DELETE' })
+export async function deleteLayout(layoutId: number) {
+  const res = await fetch(`${API_URL}/api/layouts/${layoutId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Delete failed')
 }
 

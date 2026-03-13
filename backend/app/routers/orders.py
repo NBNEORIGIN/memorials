@@ -3,7 +3,7 @@
 import os
 import shutil
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session, joinedload
@@ -112,6 +112,100 @@ async def upload_order_file(
     db.refresh(job)
 
     # Re-query with items loaded
+    return get_job(job.id, db)
+
+
+def _resolve_and_add_items(db: Session, job: Job, items_data: list[dict]):
+    """Resolve SKU mappings and add JobItem rows to a job."""
+    for item_data in items_data:
+        sku = item_data.get("sku", "").strip()
+        mapping = (
+            db.query(SkuMapping)
+            .options(
+                joinedload(SkuMapping.colour),
+                joinedload(SkuMapping.memorial_type),
+                joinedload(SkuMapping.decoration_type),
+                joinedload(SkuMapping.theme),
+                joinedload(SkuMapping.processor),
+            )
+            .filter(SkuMapping.sku == sku)
+            .first()
+        )
+
+        job_item = JobItem(
+            job_id=job.id,
+            order_id=item_data.get("order-id"),
+            order_item_id=item_data.get("order-item-id"),
+            sku=sku,
+            quantity=int(item_data.get("quantity", 1)),
+            graphic=item_data.get("graphic"),
+            line_1=item_data.get("line_1"),
+            line_2=item_data.get("line_2"),
+            line_3=item_data.get("line_3"),
+            image_path=item_data.get("image_path"),
+        )
+
+        if mapping:
+            job_item.colour = mapping.colour.name
+            job_item.memorial_type = mapping.memorial_type.name
+            job_item.decoration_type = mapping.decoration_type.name if mapping.decoration_type else None
+            job_item.theme = mapping.theme.name if mapping.theme else None
+            job_item.processor_key = mapping.processor.key
+            job_item.status = "ready"
+        else:
+            job_item.status = "unmatched"
+            job_item.error = f"SKU '{sku}' not found in database"
+
+        db.add(job_item)
+
+
+@router.post("/upload-multi", response_model=JobOut)
+async def upload_multi_order_files(
+    files: List[UploadFile] = File(...),
+    enrich: bool = Query(True),
+    db: Session = Depends(get_db),
+):
+    """Upload multiple Amazon order .txt files and merge into a single job.
+
+    Use when orders come from different Amazon accounts/regions.
+    All items from all files are combined into one job.
+    """
+    txt_files = [f for f in files if f.filename and f.filename.lower().endswith(".txt")]
+    if not txt_files:
+        raise HTTPException(status_code=400, detail="No .txt files provided")
+
+    all_items: list[dict] = []
+    filenames: list[str] = []
+
+    for uploaded in txt_files:
+        upload_path = os.path.join(settings.UPLOAD_DIR, uploaded.filename)
+        with open(upload_path, "wb") as f:
+            shutil.copyfileobj(uploaded.file, f)
+        filenames.append(uploaded.filename)
+
+        try:
+            if enrich:
+                images_dir = os.path.join(settings.UPLOAD_DIR, "images")
+                items_data = process_report_file(upload_path, images_dir)
+            else:
+                items_data = parse_amazon_txt(upload_path)
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Failed to parse {uploaded.filename}: {e}")
+
+        all_items.extend(items_data)
+
+    # Create single merged job
+    combined_name = " + ".join(filenames)
+    job = Job(source="amazon", filename=combined_name, item_count=len(all_items))
+    db.add(job)
+    db.flush()
+
+    _resolve_and_add_items(db, job, all_items)
+    job.item_count = len(all_items)
+    job.status = "parsed"
+    db.commit()
+    db.refresh(job)
+
     return get_job(job.id, db)
 
 

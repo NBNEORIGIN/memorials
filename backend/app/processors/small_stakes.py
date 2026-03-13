@@ -19,25 +19,26 @@ def _render_small_cell(
     dwg, item, x, y, graphics_dir, cell_w_px, cell_h_px,
     text_fill="black", layout=None,
 ):
-    """Render a small stake cell — graphic + centred text."""
+    """Render a small stake cell — graphic + centred text.
+
+    Font sizes in pt, converted to mm for SVG.
+    Small stakes cell is 108×75mm — text must be readable.
+    """
     lo = layout or {}
+    cell_w_mm = cell_w_px / PX_PER_MM
     cell_h_mm = cell_h_px / PX_PER_MM
-    l1y = lo.get("line1_y_mm", cell_h_mm / 2 - 15)
-    l2y = lo.get("line2_y_mm", cell_h_mm / 2)
-    l3y = lo.get("line3_y_mm", cell_h_mm / 2 + 10)
-    l1pt_mm = lo.get("line1_size_pt", 3.33) * PT_TO_MM
-    l2pt_mm = lo.get("line2_size_pt", 2.5 / PT_TO_MM) * PT_TO_MM  # 2.5mm default
-    l3pt_mm = lo.get("line3_size_pt", 3.33) * PT_TO_MM
+    l1y = lo.get("line1_y_mm", cell_h_mm * 0.28)
+    l2y = lo.get("line2_y_mm", cell_h_mm * 0.50)
+    l3y = lo.get("line3_y_mm", cell_h_mm * 0.68)
+    # Proper pt sizes — readable on 108×75mm cell
+    l1pt = lo.get("line1_size_pt", 24.0)
+    l2pt = lo.get("line2_size_pt", 32.0)
+    l3pt = lo.get("line3_size_pt", 18.0)
     tx = lo.get("text_x_frac", 0.5)
     ff = lo.get("font_family", "Georgia")
     tf = lo.get("text_fill", text_fill)
-    max_chars = lo.get("max_chars_line3", 30)
-    max_rows = lo.get("line3_max_rows", 5)
-
-    # For small stakes, use mm sizes directly if overridden as pt
-    l1_size = f"{l1pt_mm}mm" if "line1_size_pt" in lo else "3.33pt"
-    l2_size = f"{lo.get('line2_size_pt', 0) * PT_TO_MM}mm" if "line2_size_pt" in lo else "2.5mm"
-    l3_size = f"{l3pt_mm}mm" if "line3_size_pt" in lo else "3.33pt"
+    max_chars = lo.get("max_chars_line3", 25)
+    max_rows = lo.get("line3_max_rows", 4)
 
     if item.graphic:
         gpath = os.path.join(graphics_dir, item.graphic)
@@ -51,34 +52,34 @@ def _render_small_cell(
 
     center_x = x + cell_w_px * tx
 
-    # Line 1
+    # Line 1 — heading
     if item.line_1:
         lines = split_line_to_fit(str(item.line_1), max_chars)
         el = dwg.text("", insert=(center_x, y + l1y * PX_PER_MM),
-                       font_size=l1_size, font_family=ff,
+                       font_size=f"{l1pt * PT_TO_MM}mm", font_family=ff,
                        text_anchor="middle", fill=tf)
         for i, ln in enumerate(lines):
             el.add(dwg.tspan(ln.strip(), x=[center_x],
                              dy=["0" if i == 0 else "1.2em"]))
         dwg.add(el)
 
-    # Line 2
+    # Line 2 — name (larger)
     if item.line_2:
         lines = split_line_to_fit(str(item.line_2), max_chars)
         el = dwg.text("", insert=(center_x, y + l2y * PX_PER_MM),
-                       font_size=l2_size, font_family=ff,
+                       font_size=f"{l2pt * PT_TO_MM}mm", font_family=ff,
                        text_anchor="middle", fill=tf)
         for i, ln in enumerate(lines):
             el.add(dwg.tspan(ln.strip(), x=[center_x],
                              dy=["0" if i == 0 else "1.2em"]))
         dwg.add(el)
 
-    # Line 3
+    # Line 3 — additional text
     if item.line_3:
         lines = split_line_to_fit(str(item.line_3), max_chars)[:max_rows]
         if lines:
             el = dwg.text("", insert=(center_x, y + l3y * PX_PER_MM),
-                           font_size=l3_size, font_family=ff,
+                           font_size=f"{l3pt * PT_TO_MM}mm", font_family=ff,
                            text_anchor="middle", fill=tf)
             for i, ln in enumerate(lines):
                 el.add(dwg.tspan(ln.strip(), x=[center_x],
@@ -116,7 +117,7 @@ class SmallStakesGraphicColoured(_SmallStakeBase):
     def render_cell(self, dwg, item, x, y):
         _render_small_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)
 
 
 @register("small_stakes_graphic_bw")
@@ -126,4 +127,4 @@ class SmallStakesGraphicBW(_SmallStakeBase):
     def render_cell(self, dwg, item, x, y):
         _render_small_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)

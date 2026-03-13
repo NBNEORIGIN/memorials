@@ -139,7 +139,7 @@ class HeartStakesGraphicColoured(_HeartStakeBase):
     def render_cell(self, dwg, item, x, y):
         _render_heart_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)
 
 
 @register("heart_stakes_graphic")
@@ -149,4 +149,4 @@ class HeartStakesGraphic(_HeartStakeBase):
     def render_cell(self, dwg, item, x, y):
         _render_heart_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)

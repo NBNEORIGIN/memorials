@@ -154,7 +154,7 @@ class BrassPlaqueeLarge(_BrassBase):
     def render_cell(self, dwg, item, x, y):
         _render_brass_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)
 
 
 @register("brass_plaque_medium")
@@ -166,7 +166,7 @@ class BrassPlaqueeMedium(_BrassBase):
     def render_cell(self, dwg, item, x, y):
         _render_brass_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)
 
 
 @register("brass_plaque_small")
@@ -178,7 +178,7 @@ class BrassPlaqueeSmall(_BrassBase):
     def render_cell(self, dwg, item, x, y):
         _render_brass_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)
 
 
 @register("laser_engrave_large")
@@ -190,7 +190,7 @@ class LaserEngraveLarge(_BrassBase):
     def render_cell(self, dwg, item, x, y):
         _render_brass_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)
 
 
 @register("laser_engrave_medium")
@@ -202,7 +202,7 @@ class LaserEngraveMedium(_BrassBase):
     def render_cell(self, dwg, item, x, y):
         _render_brass_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)
 
 
 @register("laser_engrave_small")
@@ -214,4 +214,4 @@ class LaserEngraveSmall(_BrassBase):
     def render_cell(self, dwg, item, x, y):
         _render_brass_cell(dwg, item, x, y, self.graphics_dir,
                            self.cell_width_px, self.cell_height_px, "black",
-                           self.layout_overrides)
+                           item.layout_overrides or self.layout_overrides)

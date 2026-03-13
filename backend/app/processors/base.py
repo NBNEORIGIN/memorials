@@ -37,6 +37,7 @@ class OrderItem:
     line_2: Optional[str]
     line_3: Optional[str]
     image_path: Optional[str]
+    layout_overrides: Optional[dict] = None
 
 
 @dataclass
@@ -92,6 +93,96 @@ def split_line_to_fit(text: str, max_chars: int = 40) -> List[str]:
             if current:
                 result.append(" ".join(current))
     return result
+
+
+def estimate_text_width_mm(text: str, font_size_pt: float) -> float:
+    """Rough estimate of text width in mm for a given font size.
+
+    Uses average character width ≈ 0.52 × font size in mm for Georgia.
+    This is an approximation — real width varies per character.
+    """
+    char_width_mm = font_size_pt * PT_TO_MM * 0.52
+    return len(text) * char_width_mm
+
+
+def estimate_max_chars(available_width_mm: float, font_size_pt: float) -> int:
+    """Estimate how many chars fit in a given width at a given font size."""
+    char_width_mm = font_size_pt * PT_TO_MM * 0.52
+    if char_width_mm <= 0:
+        return 40
+    return max(8, int(available_width_mm / char_width_mm))
+
+
+def smart_wrap_text(
+    text: str,
+    available_width_mm: float,
+    font_size_pt: float,
+    max_rows: int = 6,
+    min_font_pt: float = 8.0,
+    shrink_step_pt: float = 1.0,
+) -> tuple:
+    """Smart text wrapping that respects intentional line breaks and adapts font size.
+
+    Returns (lines: list[str], final_font_pt: float).
+
+    Strategy:
+    1. Respect customer newlines (poems, dates on separate lines).
+    2. Word-wrap each line to fit available width.
+    3. If too many lines, shrink font and retry.
+    4. Never go below min_font_pt.
+    """
+    if not text or not text.strip():
+        return [], font_size_pt
+
+    current_pt = font_size_pt
+
+    while current_pt >= min_font_pt:
+        max_chars = estimate_max_chars(available_width_mm, current_pt)
+        lines = []
+        for raw_line in str(text).split("\n"):
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            if len(stripped) <= max_chars:
+                lines.append(stripped)
+            else:
+                # Word-wrap this line
+                current_words: List[str] = []
+                for word in stripped.split():
+                    if current_words and len(" ".join(current_words + [word])) > max_chars:
+                        lines.append(" ".join(current_words))
+                        current_words = [word]
+                    else:
+                        current_words.append(word)
+                if current_words:
+                    lines.append(" ".join(current_words))
+
+        if len(lines) <= max_rows:
+            return lines, current_pt
+
+        # Too many lines — shrink font and retry
+        current_pt -= shrink_step_pt
+
+    # Hit min font — just truncate to max_rows at min size
+    max_chars = estimate_max_chars(available_width_mm, min_font_pt)
+    lines = []
+    for raw_line in str(text).split("\n"):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if len(stripped) <= max_chars:
+            lines.append(stripped)
+        else:
+            current_words: List[str] = []
+            for word in stripped.split():
+                if current_words and len(" ".join(current_words + [word])) > max_chars:
+                    lines.append(" ".join(current_words))
+                    current_words = [word]
+                else:
+                    current_words.append(word)
+            if current_words:
+                lines.append(" ".join(current_words))
+    return lines[:max_rows], min_font_pt
 
 
 class BaseProcessor(ABC):

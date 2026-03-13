@@ -148,16 +148,18 @@ class JobItem(Base):
 
 
 class CellLayout(Base):
-    """Per-processor cell layout overrides.
+    """Cell layout overrides — can be processor-level or SKU-specific.
 
-    Stores text positions, font sizes, graphic/photo placement as JSON.
-    Processors read these at generation time, falling back to class defaults
-    if no layout is stored. Staff can adjust via the visual layout editor.
+    Lookup order: SKU-specific layout → processor-level layout → class defaults.
+    When sku is NULL, the layout applies to all items using that processor.
+    When sku is set, it applies only to items with that exact SKU.
+    Staff can adjust via the visual layout editor.
     """
     __tablename__ = "cell_layouts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    processor_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    processor_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
     label: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # Text positions (Y-offset in mm from cell top)
