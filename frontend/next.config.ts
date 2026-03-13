@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
+  basePath: "/memorials",
+  output: "standalone",
 };
 
 export default nextConfig;

@@ -1,45 +1,31 @@
 version: "3.9"
 
 services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: memorials
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5433:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
   backend:
     build: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    volumes:
-      - ./backend:/app
-      - uploads:/app/uploads
-      - output:/app/output
+    restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8012:8000"
+    volumes:
+      - memorials-data:/app/data
+      - memorials-uploads:/app/uploads
+      - memorials-output:/app/output
+      - ./backend/assets/graphics:/app/graphics:ro
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/memorials
-    depends_on:
-      - db
+      DATABASE_URL: "sqlite:///./data/memorials.db"
+      UPLOAD_DIR: "./uploads"
+      OUTPUT_DIR: "./output"
+      GRAPHICS_DIR: "./graphics"
 
   frontend:
     build: ./frontend
-    command: npm run dev
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+    restart: unless-stopped
     ports:
-      - "3000:3000"
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      - "127.0.0.1:3012:3000"
     depends_on:
       - backend
 
 volumes:
-  pgdata:
-  uploads:
-  output:
+  memorials-data:
+  memorials-uploads:
+  memorials-output:
