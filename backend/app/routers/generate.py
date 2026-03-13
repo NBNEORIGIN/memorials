@@ -1,5 +1,6 @@
 """SVG generation endpoint — batches job items by processor type into print sheets."""
 
+import csv
 import io
 import os
 import zipfile
@@ -65,6 +66,37 @@ def _load_layout_overrides(db: Session, processor_key: str, sku: str | None = No
 
     return {}
 
+def _write_batch_csv(svg_path: str, batch_db_items: list) -> str:
+    """Write a companion CSV alongside the SVG with order/item details for shipping.
+
+    CSV columns: position, order_id, order_item_id, sku, colour, graphic, photo,
+                 line_1, line_2, line_3
+    Returns the CSV file path.
+    """
+    csv_path = os.path.splitext(svg_path)[0] + ".csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "position", "order_id", "order_item_id", "sku", "colour",
+            "memorial_type", "graphic", "photo", "line_1", "line_2", "line_3",
+        ])
+        for idx, item in enumerate(batch_db_items, 1):
+            writer.writerow([
+                idx,
+                item.order_id or "",
+                item.order_item_id or "",
+                item.sku or "",
+                item.colour or "",
+                item.memorial_type or "",
+                item.graphic or "",
+                "yes" if item.image_path else "",
+                item.line_1 or "",
+                item.line_2 or "",
+                item.line_3 or "",
+            ])
+    return csv_path
+
+
 router = APIRouter(prefix="/api/generate", tags=["SVG Generation"])
 
 
@@ -121,8 +153,12 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
         groups[item.processor_key].append(item)
 
     # ── Generate batch print sheets per processor type ────────────
+    # Colour sort order: gold first, then silver, then copper.
+    # Black items go on SEPARATE print sheets (white ink on black acrylic).
+    _COLOUR_ORDER = {"gold": 0, "silver": 1, "copper": 2, "stone": 3, "marble": 4}
+    _BLACK_COLOURS = {"black"}
+
     for proc_key, db_items in groups.items():
-        # Processor-level overrides (fallback for items without SKU-specific layout)
         processor = get_processor(proc_key, graphics_dir, settings.OUTPUT_DIR)
         if processor is None:
             for it in db_items:
@@ -131,44 +167,54 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
                 error_count += 1
             continue
 
-        # Sort by colour priority (copper→gold→silver→stone→marble)
-        colour_order = {"copper": 0, "gold": 1, "silver": 2, "stone": 3, "marble": 4}
-        db_items.sort(key=lambda it: colour_order.get((it.colour or "").lower(), 99))
+        # Split black items onto separate sheets
+        black_items = [it for it in db_items if (it.colour or "").lower() in _BLACK_COLOURS]
+        colour_items = [it for it in db_items if (it.colour or "").lower() not in _BLACK_COLOURS]
 
-        # Build OrderItem objects with per-item SKU-specific layout overrides
-        order_items = [
-            _build_order_item(it, _load_layout_overrides(db, proc_key, it.sku))
-            for it in db_items
-        ]
+        # Sort colour items: gold → silver → copper → other
+        colour_items.sort(key=lambda it: _COLOUR_ORDER.get((it.colour or "").lower(), 99))
 
-        batch_size = processor.batch_size
-        batch_num = 1
+        # Process each group (colour sheets first, then black sheets)
+        for group_label, group_db_items in [("colour", colour_items), ("black", black_items)]:
+            if not group_db_items:
+                continue
 
-        for start in range(0, len(order_items), batch_size):
-            batch_order_items = order_items[start:start + batch_size]
-            batch_db_items = db_items[start:start + batch_size]
+            order_items = [
+                _build_order_item(it, _load_layout_overrides(db, proc_key, it.sku))
+                for it in group_db_items
+            ]
 
-            try:
-                result = processor.generate_batch_svg(
-                    batch_order_items, batch_num, settings.OUTPUT_DIR,
-                )
-                if result.success:
-                    for it in batch_db_items:
-                        it.status = "complete"
-                        it.svg_path = result.svg_path
-                    success_count += len(batch_db_items)
-                else:
+            batch_size = processor.batch_size
+            batch_num = 1
+
+            for start in range(0, len(order_items), batch_size):
+                batch_order_items = order_items[start:start + batch_size]
+                batch_db_items = group_db_items[start:start + batch_size]
+
+                try:
+                    result = processor.generate_batch_svg(
+                        batch_order_items, batch_num, settings.OUTPUT_DIR,
+                    )
+                    if result.success:
+                        for it in batch_db_items:
+                            it.status = "complete"
+                            it.svg_path = result.svg_path
+                        success_count += len(batch_db_items)
+
+                        # Write companion CSV alongside the SVG
+                        _write_batch_csv(result.svg_path, batch_db_items)
+                    else:
+                        for it in batch_db_items:
+                            it.status = "error"
+                            it.error = result.error or "Unknown batch error"
+                        error_count += len(batch_db_items)
+                except Exception as e:
                     for it in batch_db_items:
                         it.status = "error"
-                        it.error = result.error or "Unknown batch error"
+                        it.error = str(e)
                     error_count += len(batch_db_items)
-            except Exception as e:
-                for it in batch_db_items:
-                    it.status = "error"
-                    it.error = str(e)
-                error_count += len(batch_db_items)
 
-            batch_num += 1
+                batch_num += 1
 
     # ── Update job status ─────────────────────────────────────────
     if error_count == 0:
@@ -217,9 +263,24 @@ def get_svg_file(item_id: int, db: Session = Depends(get_db)):
                         filename=os.path.basename(item.svg_path))
 
 
+@router.get("/csv/{item_id}")
+def get_csv_file(item_id: int, db: Session = Depends(get_db)):
+    """Serve the companion CSV file for a print sheet."""
+    item = db.query(JobItem).filter(JobItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if not item.svg_path:
+        raise HTTPException(status_code=404, detail="No SVG path for this item")
+    csv_path = os.path.splitext(item.svg_path)[0] + ".csv"
+    if not os.path.exists(csv_path):
+        raise HTTPException(status_code=404, detail="CSV file not found")
+    return FileResponse(csv_path, media_type="text/csv",
+                        filename=os.path.basename(csv_path))
+
+
 @router.get("/download/{job_id}")
 def download_all_svgs(job_id: int, db: Session = Depends(get_db)):
-    """Download all generated SVGs for a job as a ZIP file."""
+    """Download all generated SVGs + companion CSVs for a job as a ZIP file."""
     job = db.query(Job).options(joinedload(Job.items)).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -236,6 +297,10 @@ def download_all_svgs(job_id: int, db: Session = Depends(get_db)):
             if item.svg_path not in seen_paths:
                 seen_paths.add(item.svg_path)
                 zf.write(item.svg_path, os.path.basename(item.svg_path))
+                # Include companion CSV if it exists
+                csv_path = os.path.splitext(item.svg_path)[0] + ".csv"
+                if os.path.exists(csv_path):
+                    zf.write(csv_path, os.path.basename(csv_path))
     buf.seek(0)
 
     filename = f"{job.filename or f'job_{job.id}'}_svgs.zip"

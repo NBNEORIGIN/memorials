@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Upload, Play, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, Settings, Pencil, Check, X, ChevronDown, ChevronUp } from 'lucide-react'
-import { uploadOrderFiles, generateSvgs, fetchJobs, fetchJob, deleteJob, resetJob, updateJobItem, svgPreviewUrl, svgDownloadUrl } from '@/lib/api'
+import { uploadOrderFiles, generateSvgs, fetchJobs, fetchJob, deleteJob, resetJob, updateJobItem, svgPreviewUrl, svgDownloadUrl, csvDownloadUrl } from '@/lib/api'
 
 type JobItem = {
   id: number
@@ -527,14 +527,24 @@ export default function Home() {
                                 <p className="text-xs font-mono text-gray-600">{fname}</p>
                                 <p className="text-[11px] text-gray-400 mt-0.5">{sheet.items.length} item{sheet.items.length !== 1 ? 's' : ''} on this sheet</p>
                               </div>
-                              <a
-                                href={svgDownloadUrl(sheet.id)}
-                                download={fname}
-                                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-sm"
-                              >
-                                <Download className="w-4 h-4" />
-                                Download SVG
-                              </a>
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={csvDownloadUrl(sheet.id)}
+                                  download={fname.replace('.svg', '.csv')}
+                                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  CSV
+                                </a>
+                                <a
+                                  href={svgDownloadUrl(sheet.id)}
+                                  download={fname}
+                                  className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                                >
+                                  <Download className="w-4 h-4" />
+                                  Download SVG
+                                </a>
+                              </div>
                             </div>
                           </div>
                         )

@@ -96,6 +96,10 @@ export function svgDownloadUrl(itemId: number) {
   return `${API_URL}/api/generate/svg/${itemId}`
 }
 
+export function csvDownloadUrl(itemId: number) {
+  return `${API_URL}/api/generate/csv/${itemId}`
+}
+
 export function downloadAllUrl(jobId: number) {
   return `${API_URL}/api/generate/download/${jobId}`
 }
