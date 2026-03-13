@@ -129,10 +129,21 @@ class BaseProcessor(ABC):
     # Stroke width in mm
     stroke_width_mm: float = 0.1
 
-    def __init__(self, graphics_dir: str, output_dir: str):
+    def __init__(self, graphics_dir: str, output_dir: str, layout_overrides: Optional[dict] = None):
         self.graphics_dir = graphics_dir
         self.output_dir = output_dir
+        self.layout_overrides = layout_overrides or {}
         os.makedirs(output_dir, exist_ok=True)
+
+    def lv(self, field: str, default=None):
+        """Resolve a layout value: DB override → class attribute → default."""
+        v = self.layout_overrides.get(field)
+        if v is not None:
+            return v
+        v = getattr(self, field, None)
+        if v is not None:
+            return v
+        return default
 
     @property
     def batch_size(self) -> int:

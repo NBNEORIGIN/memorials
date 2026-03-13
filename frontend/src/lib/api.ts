@@ -97,3 +97,100 @@ export function svgDownloadUrl(itemId: number) {
 export function downloadAllUrl(jobId: number) {
   return `${API_URL}/api/generate/download/${jobId}`
 }
+
+export async function deleteSkuMapping(mappingId: number) {
+  const res = await fetch(`${API_URL}/api/skus/${mappingId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Delete failed')
+}
+
+export async function updateSkuMapping(mappingId: number, data: Record<string, any>) {
+  const res = await fetch(`${API_URL}/api/skus/${mappingId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Update failed')
+  }
+  return res.json()
+}
+
+export async function importSkuCsv(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_URL}/api/skus/import-csv`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Import failed')
+  }
+  return res.json()
+}
+
+export async function fetchDecorationTypes() {
+  const res = await fetch(`${API_URL}/api/skus/decoration-types`)
+  if (!res.ok) throw new Error('Failed to fetch decoration types')
+  return res.json()
+}
+
+export async function fetchThemes() {
+  const res = await fetch(`${API_URL}/api/skus/themes`)
+  if (!res.ok) throw new Error('Failed to fetch themes')
+  return res.json()
+}
+
+// ── Cell Layouts ──
+
+export async function fetchLayouts() {
+  const res = await fetch(`${API_URL}/api/layouts/`)
+  if (!res.ok) throw new Error('Failed to fetch layouts')
+  return res.json()
+}
+
+export async function fetchLayout(processorKey: string) {
+  const res = await fetch(`${API_URL}/api/layouts/${processorKey}`)
+  if (!res.ok) throw new Error('Layout not found')
+  return res.json()
+}
+
+export async function fetchLayoutDefaults(processorKey: string) {
+  const res = await fetch(`${API_URL}/api/layouts/defaults/${processorKey}`)
+  if (!res.ok) throw new Error('Failed to fetch defaults')
+  return res.json()
+}
+
+export async function saveLayout(processorKey: string, data: Record<string, any>, isNew: boolean) {
+  const url = isNew
+    ? `${API_URL}/api/layouts/`
+    : `${API_URL}/api/layouts/${processorKey}`
+  const method = isNew ? 'POST' : 'PUT'
+  const body = isNew ? { processor_key: processorKey, ...data } : data
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Save failed')
+  }
+  return res.json()
+}
+
+export async function deleteLayout(processorKey: string) {
+  const res = await fetch(`${API_URL}/api/layouts/${processorKey}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Delete failed')
+}
+
+export function layoutPreviewUrl(processorKey: string, params: Record<string, any>) {
+  const qs = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== null && v !== undefined && v !== '') {
+      qs.set(k, String(v))
+    }
+  }
+  return `${API_URL}/api/layouts/preview/${processorKey}?${qs.toString()}`
+}

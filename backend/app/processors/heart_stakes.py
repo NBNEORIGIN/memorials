@@ -38,9 +38,20 @@ _HEART_PATH_D = (
 
 def _render_heart_cell(
     dwg, item, x, y, graphics_dir, cell_w_px, cell_h_px,
-    text_fill="black",
+    text_fill="black", layout=None,
 ):
     """Render a heart stake cell with heart outline, graphic, and text."""
+    lo = layout or {}
+    cell_h_mm = cell_h_px / PX_PER_MM
+    l1y = lo.get("line1_y_mm", cell_h_mm / 2 - 10)
+    l2y = lo.get("line2_y_mm", cell_h_mm / 2 + 3)
+    l3y = lo.get("line3_y_mm", cell_h_mm / 2 + 15)
+    tx = lo.get("text_x_frac", 0.5)
+    ff = lo.get("font_family", "Georgia")
+    tf = lo.get("text_fill", text_fill)
+    max_chars = lo.get("max_chars_line3", 30)
+    max_rows = lo.get("line3_max_rows", 5)
+
     # Embed graphic background
     if item.graphic:
         gpath = os.path.join(graphics_dir, item.graphic)
@@ -52,9 +63,7 @@ def _render_heart_cell(
                 preserveAspectRatio="xMidYMid meet",
             ))
 
-    # Draw heart outline — scale to fit the cell
-    # The original heart path fits in roughly a 140×115 unit box.
-    # We translate to cell origin + small offset for the heart starting point.
+    # Draw heart outline
     heart_group = dwg.g(transform=f"translate({x + cell_w_px * 0.01},{y + cell_h_px * 0.17})")
     scale_x = cell_w_px / (140 * PX_PER_MM)
     scale_y = cell_h_px / (90 * PX_PER_MM)
@@ -67,36 +76,35 @@ def _render_heart_cell(
     ))
     dwg.add(heart_group)
 
-    center_x = x + cell_w_px / 2
-    center_y = y + cell_h_px / 2
+    center_x = x + cell_w_px * tx
 
-    # Text lines — centred
+    # Text lines
     if item.line_1:
-        lines = split_line_to_fit(str(item.line_1), 30)
-        el = dwg.text("", insert=(center_x, center_y - 10 * PX_PER_MM),
-                       font_size="3.33pt", font_family="Georgia",
-                       text_anchor="middle", fill=text_fill)
+        lines = split_line_to_fit(str(item.line_1), max_chars)
+        el = dwg.text("", insert=(center_x, y + l1y * PX_PER_MM),
+                       font_size="3.33pt", font_family=ff,
+                       text_anchor="middle", fill=tf)
         for i, ln in enumerate(lines):
             el.add(dwg.tspan(ln.strip(), x=[center_x],
                              dy=["0" if i == 0 else "1.2em"]))
         dwg.add(el)
 
     if item.line_2:
-        lines = split_line_to_fit(str(item.line_2), 30)
-        el = dwg.text("", insert=(center_x, center_y + 3 * PX_PER_MM),
-                       font_size="2.5mm", font_family="Georgia",
-                       text_anchor="middle", fill=text_fill)
+        lines = split_line_to_fit(str(item.line_2), max_chars)
+        el = dwg.text("", insert=(center_x, y + l2y * PX_PER_MM),
+                       font_size="2.5mm", font_family=ff,
+                       text_anchor="middle", fill=tf)
         for i, ln in enumerate(lines):
             el.add(dwg.tspan(ln.strip(), x=[center_x],
                              dy=["0" if i == 0 else "1.2em"]))
         dwg.add(el)
 
     if item.line_3:
-        lines = split_line_to_fit(str(item.line_3), 30)[:5]
+        lines = split_line_to_fit(str(item.line_3), max_chars)[:max_rows]
         if lines:
-            el = dwg.text("", insert=(center_x, center_y + 15 * PX_PER_MM),
-                           font_size="3.33pt", font_family="Georgia",
-                           text_anchor="middle", fill=text_fill)
+            el = dwg.text("", insert=(center_x, y + l3y * PX_PER_MM),
+                           font_size="3.33pt", font_family=ff,
+                           text_anchor="middle", fill=tf)
             for i, ln in enumerate(lines):
                 el.add(dwg.tspan(ln.strip(), x=[center_x],
                                  dy=["0" if i == 0 else "1.2em"]))
@@ -130,7 +138,8 @@ class HeartStakesGraphicColoured(_HeartStakeBase):
 
     def render_cell(self, dwg, item, x, y):
         _render_heart_cell(dwg, item, x, y, self.graphics_dir,
-                           self.cell_width_px, self.cell_height_px, "black")
+                           self.cell_width_px, self.cell_height_px, "black",
+                           self.layout_overrides)
 
 
 @register("heart_stakes_graphic")
@@ -139,4 +148,5 @@ class HeartStakesGraphic(_HeartStakeBase):
 
     def render_cell(self, dwg, item, x, y):
         _render_heart_cell(dwg, item, x, y, self.graphics_dir,
-                           self.cell_width_px, self.cell_height_px, "black")
+                           self.cell_width_px, self.cell_height_px, "black",
+                           self.layout_overrides)

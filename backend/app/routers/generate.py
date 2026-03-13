@@ -13,10 +13,31 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.database import get_db
-from app.models import Job, JobItem
+from app.models import Job, JobItem, CellLayout
 from app.schemas import JobOut
 from app.processors.base import OrderItem
 from app.processors.registry import get_processor
+
+
+def _load_layout_overrides(db: Session, processor_key: str) -> dict:
+    """Load CellLayout from DB and return as dict of non-None overrides."""
+    layout = db.query(CellLayout).filter(CellLayout.processor_key == processor_key).first()
+    if not layout:
+        return {}
+    overrides = {}
+    for field in (
+        "line1_y_mm", "line2_y_mm", "line3_y_mm",
+        "line1_size_pt", "line2_size_pt", "line3_size_pt",
+        "text_x_frac",
+        "graphic_x_frac", "graphic_y_frac", "graphic_w_frac", "graphic_h_frac",
+        "photo_x_frac", "photo_y_frac", "photo_w_frac", "photo_h_frac",
+        "max_chars_line1", "max_chars_line2", "max_chars_line3",
+        "line3_max_rows", "font_family", "text_fill",
+    ):
+        v = getattr(layout, field, None)
+        if v is not None:
+            overrides[field] = v
+    return overrides
 
 router = APIRouter(prefix="/api/generate", tags=["SVG Generation"])
 
@@ -74,7 +95,9 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
 
     # ── Generate batch print sheets per processor type ────────────
     for proc_key, db_items in groups.items():
-        processor = get_processor(proc_key, graphics_dir, settings.OUTPUT_DIR)
+        overrides = _load_layout_overrides(db, proc_key)
+        processor = get_processor(proc_key, graphics_dir, settings.OUTPUT_DIR,
+                                  layout_overrides=overrides)
         if processor is None:
             for it in db_items:
                 it.status = "error"

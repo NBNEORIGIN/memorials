@@ -1,6 +1,9 @@
 """CRUD endpoints for SKU mappings and reference data (colours, types, themes, processors)."""
 
-from fastapi import APIRouter, Depends, HTTPException
+import csv
+import io
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -130,3 +133,95 @@ def delete_sku_mapping(mapping_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="SKU mapping not found")
     db.delete(obj)
     db.commit()
+
+
+@router.post("/import-csv")
+async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Bulk import SKU mappings from a CSV file.
+
+    Expected columns: SKU, COLOUR, TYPE, DecorationType, Theme, ProcessorCategory
+    Matches existing reference data by name; creates new entries if missing.
+    Skips rows where SKU already exists.
+    """
+    content = await file.read()
+    text = content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text))
+
+    created = 0
+    skipped = 0
+    errors = []
+
+    for i, row in enumerate(reader, start=2):
+        sku = (row.get("SKU") or "").strip()
+        if not sku:
+            continue
+
+        colour_name = (row.get("COLOUR") or "").strip().title()
+        type_name = (row.get("TYPE") or "").strip()
+        proc_key = (row.get("ProcessorCategory") or "").strip()
+        deco_name = (row.get("DecorationType") or "").strip()
+        theme_name = (row.get("Theme") or "").strip()
+
+        if not colour_name or not type_name:
+            errors.append(f"Row {i}: missing colour or type for SKU '{sku}'")
+            continue
+
+        # Check if already exists
+        if db.query(SkuMapping).filter_by(sku=sku).first():
+            skipped += 1
+            continue
+
+        # Resolve colour
+        colour = db.query(Colour).filter_by(name=colour_name).first()
+        if not colour:
+            colour = Colour(name=colour_name)
+            db.add(colour)
+            db.flush()
+
+        # Resolve type
+        mem_type = db.query(MemorialType).filter_by(name=type_name).first()
+        if not mem_type:
+            mem_type = MemorialType(name=type_name)
+            db.add(mem_type)
+            db.flush()
+
+        # Resolve processor
+        if not proc_key:
+            proc_key = "unclassified"
+        processor = db.query(Processor).filter_by(key=proc_key).first()
+        if not processor:
+            processor = Processor(key=proc_key, display_name=proc_key.replace("_", " ").title())
+            db.add(processor)
+            db.flush()
+
+        # Resolve optional decoration type
+        deco = None
+        if deco_name:
+            deco = db.query(DecorationType).filter_by(name=deco_name).first()
+            if not deco:
+                deco = DecorationType(name=deco_name)
+                db.add(deco)
+                db.flush()
+
+        # Resolve optional theme
+        theme = None
+        if theme_name:
+            theme = db.query(Theme).filter_by(name=theme_name).first()
+            if not theme:
+                theme = Theme(name=theme_name)
+                db.add(theme)
+                db.flush()
+
+        mapping = SkuMapping(
+            sku=sku,
+            colour_id=colour.id,
+            memorial_type_id=mem_type.id,
+            processor_id=processor.id,
+            decoration_type_id=deco.id if deco else None,
+            theme_id=theme.id if theme else None,
+        )
+        db.add(mapping)
+        created += 1
+
+    db.commit()
+    return {"created": created, "skipped": skipped, "errors": errors}

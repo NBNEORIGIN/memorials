@@ -56,6 +56,12 @@ PROCESSOR_DISPLAY = {
     "small_metal_graphic":             "Small Metal — Graphic",
     "xl_metal_graphic":                "XL Metal — Graphic",
     "unclassified":                    "Unclassified",
+    "brass_plaque_large":              "Brass Plaque — Large",
+    "brass_plaque_medium":             "Brass Plaque — Medium",
+    "brass_plaque_small":              "Brass Plaque — Small",
+    "laser_engrave_large":             "Laser Engrave — Large",
+    "laser_engrave_medium":            "Laser Engrave — Medium",
+    "laser_engrave_small":             "Laser Engrave — Small",
 }
 
 

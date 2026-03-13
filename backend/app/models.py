@@ -145,3 +145,59 @@ class JobItem(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     job: Mapped["Job"] = relationship(back_populates="items")
+
+
+class CellLayout(Base):
+    """Per-processor cell layout overrides.
+
+    Stores text positions, font sizes, graphic/photo placement as JSON.
+    Processors read these at generation time, falling back to class defaults
+    if no layout is stored. Staff can adjust via the visual layout editor.
+    """
+    __tablename__ = "cell_layouts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    processor_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    label: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    # Text positions (Y-offset in mm from cell top)
+    line1_y_mm: Mapped[Optional[float]] = mapped_column(nullable=True)
+    line2_y_mm: Mapped[Optional[float]] = mapped_column(nullable=True)
+    line3_y_mm: Mapped[Optional[float]] = mapped_column(nullable=True)
+
+    # Font sizes in pt
+    line1_size_pt: Mapped[Optional[float]] = mapped_column(nullable=True)
+    line2_size_pt: Mapped[Optional[float]] = mapped_column(nullable=True)
+    line3_size_pt: Mapped[Optional[float]] = mapped_column(nullable=True)
+
+    # Text X position as fraction of cell width (0.5 = centred)
+    text_x_frac: Mapped[Optional[float]] = mapped_column(nullable=True)
+
+    # Graphic position/size as fractions of cell dimensions
+    graphic_x_frac: Mapped[Optional[float]] = mapped_column(nullable=True)
+    graphic_y_frac: Mapped[Optional[float]] = mapped_column(nullable=True)
+    graphic_w_frac: Mapped[Optional[float]] = mapped_column(nullable=True)
+    graphic_h_frac: Mapped[Optional[float]] = mapped_column(nullable=True)
+
+    # Photo position/size as fractions of cell dimensions (photo processors)
+    photo_x_frac: Mapped[Optional[float]] = mapped_column(nullable=True)
+    photo_y_frac: Mapped[Optional[float]] = mapped_column(nullable=True)
+    photo_w_frac: Mapped[Optional[float]] = mapped_column(nullable=True)
+    photo_h_frac: Mapped[Optional[float]] = mapped_column(nullable=True)
+
+    # Max chars per line for word-wrap
+    max_chars_line1: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_chars_line2: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_chars_line3: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Line 3 max rows
+    line3_max_rows: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Font family override
+    font_family: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # Text colour
+    text_fill: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, onupdate=func.now(), nullable=True)

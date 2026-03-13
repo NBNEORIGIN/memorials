@@ -23,12 +23,13 @@ def register(key: str):
     return wrapper
 
 
-def get_processor(key: str, graphics_dir: str, output_dir: str) -> Optional[BaseProcessor]:
+def get_processor(key: str, graphics_dir: str, output_dir: str,
+                   layout_overrides: Optional[dict] = None) -> Optional[BaseProcessor]:
     """Look up and instantiate a processor by key. Returns None if not found."""
     cls = _REGISTRY.get(key)
     if cls is None:
         return None
-    return cls(graphics_dir, output_dir)
+    return cls(graphics_dir, output_dir, layout_overrides=layout_overrides)
 
 
 def list_registered() -> list[str]:
@@ -45,6 +46,7 @@ def _import_all():
     from app.processors import small_stakes  # noqa: F401
     from app.processors import heart_stakes  # noqa: F401
     from app.processors import metal_stakes  # noqa: F401
+    from app.processors import brass_plaque  # noqa: F401
 
 
 _import_all()

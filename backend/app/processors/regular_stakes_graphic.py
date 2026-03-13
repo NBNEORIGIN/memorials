@@ -20,38 +20,61 @@ def _render_regular_graphic_cell(
     cell_w_px: float, cell_h_px: float,
     line1_pt: float, line2_pt: float, line3_pt: float,
     text_fill: str = "black",
+    layout: dict | None = None,
 ) -> None:
-    """Shared cell renderer for regular stakes graphic (coloured and BW)."""
+    """Shared cell renderer for regular stakes graphic (coloured and BW).
 
-    # Embed graphic (full cell background)
+    layout dict can override: line1_y_mm, line2_y_mm, line3_y_mm,
+    line1_size_pt, line2_size_pt, line3_size_pt, text_x_frac,
+    graphic_x_frac, graphic_y_frac, graphic_w_frac, graphic_h_frac,
+    max_chars_line3, line3_max_rows, font_family, text_fill.
+    """
+    lo = layout or {}
+    l1y = lo.get("line1_y_mm", 28.0)
+    l2y = lo.get("line2_y_mm", 45.0)
+    l3y = lo.get("line3_y_mm", 57.0)
+    l1pt = lo.get("line1_size_pt", line1_pt)
+    l2pt = lo.get("line2_size_pt", line2_pt)
+    l3pt = lo.get("line3_size_pt", line3_pt)
+    tx = lo.get("text_x_frac", 0.5)
+    ff = lo.get("font_family", "Georgia")
+    tf = lo.get("text_fill", text_fill)
+    gx = lo.get("graphic_x_frac", 0.0)
+    gy = lo.get("graphic_y_frac", 0.0)
+    gw = lo.get("graphic_w_frac", 1.0)
+    gh = lo.get("graphic_h_frac", 1.0)
+    max_chars = lo.get("max_chars_line3", 40)
+    max_rows = lo.get("line3_max_rows", 5)
+
+    # Embed graphic
     if item.graphic:
         gpath = os.path.join(graphics_dir, item.graphic)
         data_uri = embed_image(gpath)
         if data_uri:
             dwg.add(dwg.image(
                 href=data_uri,
-                insert=(x, y),
-                size=(cell_w_px, cell_h_px),
+                insert=(x + cell_w_px * gx, y + cell_h_px * gy),
+                size=(cell_w_px * gw, cell_h_px * gh),
             ))
 
-    center_x = x + cell_w_px / 2
+    center_x = x + cell_w_px * tx
 
-    # Line 1 — heading (e.g. "In Loving Memory Of")
+    # Line 1 — heading
     if item.line_1:
         dwg.add(dwg.text(
             str(item.line_1),
-            insert=(center_x, y + 28 * PX_PER_MM),
-            font_size=f"{line1_pt * PT_TO_MM}mm",
-            font_family="Georgia", text_anchor="middle", fill=text_fill,
+            insert=(center_x, y + l1y * PX_PER_MM),
+            font_size=f"{l1pt * PT_TO_MM}mm",
+            font_family=ff, text_anchor="middle", fill=tf,
         ))
 
-    # Line 2 — name (large)
+    # Line 2 — name
     if item.line_2:
         dwg.add(dwg.text(
             str(item.line_2),
-            insert=(center_x, y + 45 * PX_PER_MM),
-            font_size=f"{line2_pt * PT_TO_MM}mm",
-            font_family="Georgia", text_anchor="middle", fill=text_fill,
+            insert=(center_x, y + l2y * PX_PER_MM),
+            font_size=f"{l2pt * PT_TO_MM}mm",
+            font_family=ff, text_anchor="middle", fill=tf,
         ))
 
     # Line 3 — additional text with word-wrap and adaptive font size
@@ -61,25 +84,24 @@ def _render_regular_graphic_cell(
             lines = []
             for raw_line in line3_text.split("\n"):
                 if raw_line.strip():
-                    lines.extend(split_line_to_fit(raw_line, 40))
+                    lines.extend(split_line_to_fit(raw_line, max_chars))
             if len(lines) == 1:
-                lines = split_line_to_fit(lines[0], 30)
-            lines = lines[:5]
+                lines = split_line_to_fit(lines[0], max(max_chars - 10, 20))
+            lines = lines[:max_rows]
 
-            # Adaptive font size based on total character count
             total_chars = sum(len(l) for l in lines)
             if 10 <= total_chars <= 30:
-                font_pt = line1_pt
+                font_pt = l1pt
             elif 31 <= total_chars <= 90:
-                font_pt = line1_pt * 0.9
+                font_pt = l1pt * 0.9
             else:
-                font_pt = line3_pt
+                font_pt = l3pt
 
             text_el = dwg.text(
                 "",
-                insert=(center_x, y + 57 * PX_PER_MM),
+                insert=(center_x, y + l3y * PX_PER_MM),
                 font_size=f"{font_pt * PT_TO_MM}mm",
-                font_family="Georgia", text_anchor="middle", fill=text_fill,
+                font_family=ff, text_anchor="middle", fill=tf,
             )
             for i, line in enumerate(lines):
                 tspan = dwg.tspan(
@@ -112,7 +134,7 @@ class RegularStakesGraphicColoured(BaseProcessor):
             dwg, item, x, y, self.graphics_dir,
             self.cell_width_px, self.cell_height_px,
             self.line1_size_pt, self.line2_size_pt, self.line3_size_pt,
-            text_fill="black",
+            text_fill="black", layout=self.layout_overrides,
         )
 
 
@@ -137,5 +159,5 @@ class RegularStakesGraphicBW(BaseProcessor):
             dwg, item, x, y, self.graphics_dir,
             self.cell_width_px, self.cell_height_px,
             self.line1_size_pt, self.line2_size_pt, self.line3_size_pt,
-            text_fill="black",
+            text_fill="black", layout=self.layout_overrides,
         )

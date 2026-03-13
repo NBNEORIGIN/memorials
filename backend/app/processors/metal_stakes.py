@@ -22,9 +22,20 @@ from app.processors.registry import register
 
 def _render_metal_cell(
     dwg, item, x, y, graphics_dir, cell_w_px, cell_h_px,
-    text_fill="black",
+    text_fill="black", layout=None,
 ):
     """Render a metal plaque cell — graphic + centred text."""
+    lo = layout or {}
+    cell_h_mm = cell_h_px / PX_PER_MM
+    l1y = lo.get("line1_y_mm", cell_h_mm / 2 - 12)
+    l2y = lo.get("line2_y_mm", cell_h_mm / 2)
+    l3y = lo.get("line3_y_mm", cell_h_mm / 2 + 10)
+    tx = lo.get("text_x_frac", 0.5)
+    ff = lo.get("font_family", "Georgia")
+    tf = lo.get("text_fill", text_fill)
+    max_chars = lo.get("max_chars_line3", 30)
+    max_rows = lo.get("line3_max_rows", 5)
+
     if item.graphic:
         gpath = os.path.join(graphics_dir, item.graphic)
         data_uri = embed_image(gpath)
@@ -35,15 +46,14 @@ def _render_metal_cell(
                 preserveAspectRatio="xMidYMid meet",
             ))
 
-    center_x = x + cell_w_px / 2
-    center_y = y + cell_h_px / 2
+    center_x = x + cell_w_px * tx
 
     # Line 1 — heading
     if item.line_1:
-        lines = split_line_to_fit(str(item.line_1), 30)
-        el = dwg.text("", insert=(center_x, center_y - 12 * PX_PER_MM),
-                       font_size="3.33pt", font_family="Georgia",
-                       text_anchor="middle", fill=text_fill)
+        lines = split_line_to_fit(str(item.line_1), max_chars)
+        el = dwg.text("", insert=(center_x, y + l1y * PX_PER_MM),
+                       font_size="3.33pt", font_family=ff,
+                       text_anchor="middle", fill=tf)
         for i, ln in enumerate(lines):
             el.add(dwg.tspan(ln.strip(), x=[center_x],
                              dy=["0" if i == 0 else "1.2em"]))
@@ -51,10 +61,10 @@ def _render_metal_cell(
 
     # Line 2 — name
     if item.line_2:
-        lines = split_line_to_fit(str(item.line_2), 30)
-        el = dwg.text("", insert=(center_x, center_y),
-                       font_size="2.5mm", font_family="Georgia",
-                       text_anchor="middle", fill=text_fill)
+        lines = split_line_to_fit(str(item.line_2), max_chars)
+        el = dwg.text("", insert=(center_x, y + l2y * PX_PER_MM),
+                       font_size="2.5mm", font_family=ff,
+                       text_anchor="middle", fill=tf)
         for i, ln in enumerate(lines):
             el.add(dwg.tspan(ln.strip(), x=[center_x],
                              dy=["0" if i == 0 else "1.2em"]))
@@ -62,11 +72,11 @@ def _render_metal_cell(
 
     # Line 3 — additional text
     if item.line_3:
-        lines = split_line_to_fit(str(item.line_3), 30)[:5]
+        lines = split_line_to_fit(str(item.line_3), max_chars)[:max_rows]
         if lines:
-            el = dwg.text("", insert=(center_x, center_y + 10 * PX_PER_MM),
-                           font_size="3.33pt", font_family="Georgia",
-                           text_anchor="middle", fill=text_fill)
+            el = dwg.text("", insert=(center_x, y + l3y * PX_PER_MM),
+                           font_size="3.33pt", font_family=ff,
+                           text_anchor="middle", fill=tf)
             for i, ln in enumerate(lines):
                 el.add(dwg.tspan(ln.strip(), x=[center_x],
                                  dy=["0" if i == 0 else "1.2em"]))
@@ -106,7 +116,8 @@ class LargeMetalGraphic(_MetalBase):
 
     def render_cell(self, dwg, item, x, y):
         _render_metal_cell(dwg, item, x, y, self.graphics_dir,
-                           self.cell_width_px, self.cell_height_px, "black")
+                           self.cell_width_px, self.cell_height_px, "black",
+                           self.layout_overrides)
 
 
 @register("xl_metal_graphic")
@@ -117,7 +128,8 @@ class XLMetalGraphic(_MetalBase):
 
     def render_cell(self, dwg, item, x, y):
         _render_metal_cell(dwg, item, x, y, self.graphics_dir,
-                           self.cell_width_px, self.cell_height_px, "black")
+                           self.cell_width_px, self.cell_height_px, "black",
+                           self.layout_overrides)
 
 
 @register("medium_metal_graphic")
@@ -128,7 +140,8 @@ class MediumMetalGraphic(_MetalBase):
 
     def render_cell(self, dwg, item, x, y):
         _render_metal_cell(dwg, item, x, y, self.graphics_dir,
-                           self.cell_width_px, self.cell_height_px, "black")
+                           self.cell_width_px, self.cell_height_px, "black",
+                           self.layout_overrides)
 
 
 @register("small_metal_graphic")
@@ -139,4 +152,5 @@ class SmallMetalGraphic(_MetalBase):
 
     def render_cell(self, dwg, item, x, y):
         _render_metal_cell(dwg, item, x, y, self.graphics_dir,
-                           self.cell_width_px, self.cell_height_px, "black")
+                           self.cell_width_px, self.cell_height_px, "black",
+                           self.layout_overrides)

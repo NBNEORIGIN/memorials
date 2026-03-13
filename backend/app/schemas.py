@@ -122,6 +122,86 @@ class JobOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Cell Layouts ──
+class CellLayoutOut(BaseModel):
+    id: int
+    processor_key: str
+    label: Optional[str] = None
+    line1_y_mm: Optional[float] = None
+    line2_y_mm: Optional[float] = None
+    line3_y_mm: Optional[float] = None
+    line1_size_pt: Optional[float] = None
+    line2_size_pt: Optional[float] = None
+    line3_size_pt: Optional[float] = None
+    text_x_frac: Optional[float] = None
+    graphic_x_frac: Optional[float] = None
+    graphic_y_frac: Optional[float] = None
+    graphic_w_frac: Optional[float] = None
+    graphic_h_frac: Optional[float] = None
+    photo_x_frac: Optional[float] = None
+    photo_y_frac: Optional[float] = None
+    photo_w_frac: Optional[float] = None
+    photo_h_frac: Optional[float] = None
+    max_chars_line1: Optional[int] = None
+    max_chars_line2: Optional[int] = None
+    max_chars_line3: Optional[int] = None
+    line3_max_rows: Optional[int] = None
+    font_family: Optional[str] = None
+    text_fill: Optional[str] = None
+    model_config = {"from_attributes": True}
+
+
+class CellLayoutCreate(BaseModel):
+    processor_key: str
+    label: Optional[str] = None
+    line1_y_mm: Optional[float] = None
+    line2_y_mm: Optional[float] = None
+    line3_y_mm: Optional[float] = None
+    line1_size_pt: Optional[float] = None
+    line2_size_pt: Optional[float] = None
+    line3_size_pt: Optional[float] = None
+    text_x_frac: Optional[float] = None
+    graphic_x_frac: Optional[float] = None
+    graphic_y_frac: Optional[float] = None
+    graphic_w_frac: Optional[float] = None
+    graphic_h_frac: Optional[float] = None
+    photo_x_frac: Optional[float] = None
+    photo_y_frac: Optional[float] = None
+    photo_w_frac: Optional[float] = None
+    photo_h_frac: Optional[float] = None
+    max_chars_line1: Optional[int] = None
+    max_chars_line2: Optional[int] = None
+    max_chars_line3: Optional[int] = None
+    line3_max_rows: Optional[int] = None
+    font_family: Optional[str] = None
+    text_fill: Optional[str] = None
+
+
+class CellLayoutUpdate(BaseModel):
+    label: Optional[str] = None
+    line1_y_mm: Optional[float] = None
+    line2_y_mm: Optional[float] = None
+    line3_y_mm: Optional[float] = None
+    line1_size_pt: Optional[float] = None
+    line2_size_pt: Optional[float] = None
+    line3_size_pt: Optional[float] = None
+    text_x_frac: Optional[float] = None
+    graphic_x_frac: Optional[float] = None
+    graphic_y_frac: Optional[float] = None
+    graphic_w_frac: Optional[float] = None
+    graphic_h_frac: Optional[float] = None
+    photo_x_frac: Optional[float] = None
+    photo_y_frac: Optional[float] = None
+    photo_w_frac: Optional[float] = None
+    photo_h_frac: Optional[float] = None
+    max_chars_line1: Optional[int] = None
+    max_chars_line2: Optional[int] = None
+    max_chars_line3: Optional[int] = None
+    line3_max_rows: Optional[int] = None
+    font_family: Optional[str] = None
+    text_fill: Optional[str] = None
+
+
 class JobSummaryOut(BaseModel):
     id: int
     source: str

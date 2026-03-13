@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import skus, orders, generate
+from app.routers import skus, orders, generate, layouts
 
 app = FastAPI(
     title="NBNE Memorials",
@@ -20,6 +20,7 @@ app.add_middleware(
 app.include_router(skus.router)
 app.include_router(orders.router)
 app.include_router(generate.router)
+app.include_router(layouts.router)
 
 
 @app.get("/api/health")

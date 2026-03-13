@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, Plus, Trash2, Pencil, X, Check, Palette, Box, Cpu, Tag, Search } from 'lucide-react'
-import { fetchSkuMappings, fetchColours, fetchMemorialTypes, fetchProcessors } from '@/lib/api'
+import { ArrowLeft, Plus, Trash2, Pencil, X, Check, Palette, Box, Cpu, Tag, Search, LayoutGrid, Save, RotateCcw } from 'lucide-react'
+import { fetchSkuMappings, fetchColours, fetchMemorialTypes, fetchProcessors, fetchLayouts, fetchLayoutDefaults, saveLayout, deleteLayout, layoutPreviewUrl, deleteSkuMapping, updateSkuMapping, importSkuCsv } from '@/lib/api'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -17,13 +17,34 @@ type SkuMapping = {
   decoration_type: DecorationType | null; theme: Theme | null; processor: Processor
 }
 
-type Tab = 'skus' | 'colours' | 'types' | 'processors'
+type Tab = 'skus' | 'colours' | 'types' | 'processors' | 'layouts'
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'skus', label: 'SKU Mappings', icon: <Tag className="w-4 h-4" /> },
   { key: 'colours', label: 'Colours', icon: <Palette className="w-4 h-4" /> },
   { key: 'types', label: 'Memorial Types', icon: <Box className="w-4 h-4" /> },
   { key: 'processors', label: 'Processors', icon: <Cpu className="w-4 h-4" /> },
+  { key: 'layouts', label: 'Layouts', icon: <LayoutGrid className="w-4 h-4" /> },
+]
+
+type LayoutValues = {
+  line1_y_mm: number; line2_y_mm: number; line3_y_mm: number;
+  line1_size_pt: number; line2_size_pt: number; line3_size_pt: number;
+  text_x_frac: number; font_family: string; text_fill: string;
+  max_chars_line3: number; line3_max_rows: number;
+  [key: string]: any;
+}
+
+const SLIDER_FIELDS: { key: keyof LayoutValues; label: string; min: number; max: number; step: number; unit: string; color: string }[] = [
+  { key: 'line1_y_mm', label: 'Line 1 Y', min: 0, max: 120, step: 0.5, unit: 'mm', color: '#3b82f6' },
+  { key: 'line2_y_mm', label: 'Line 2 Y', min: 0, max: 120, step: 0.5, unit: 'mm', color: '#10b981' },
+  { key: 'line3_y_mm', label: 'Line 3 Y', min: 0, max: 120, step: 0.5, unit: 'mm', color: '#f59e0b' },
+  { key: 'line1_size_pt', label: 'Line 1 Size', min: 4, max: 60, step: 0.5, unit: 'pt', color: '#3b82f6' },
+  { key: 'line2_size_pt', label: 'Line 2 Size', min: 4, max: 80, step: 0.5, unit: 'pt', color: '#10b981' },
+  { key: 'line3_size_pt', label: 'Line 3 Size', min: 4, max: 40, step: 0.5, unit: 'pt', color: '#f59e0b' },
+  { key: 'text_x_frac', label: 'Text X', min: 0, max: 1, step: 0.01, unit: '', color: '#8b5cf6' },
+  { key: 'max_chars_line3', label: 'Max Chars L3', min: 10, max: 80, step: 1, unit: '', color: '#6b7280' },
+  { key: 'line3_max_rows', label: 'Max Rows L3', min: 1, max: 10, step: 1, unit: '', color: '#6b7280' },
 ]
 
 export default function AdminPage() {
@@ -34,6 +55,27 @@ export default function AdminPage() {
   const [processors, setProcessors] = useState<Processor[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+
+  // Layout editor state
+  const [layouts, setLayouts] = useState<any[]>([])
+  const [editingProcessor, setEditingProcessor] = useState<string | null>(null)
+  const [layoutVals, setLayoutVals] = useState<LayoutValues | null>(null)
+  const [layoutDefaults, setLayoutDefaults] = useState<any>(null)
+  const [layoutIsNew, setLayoutIsNew] = useState(true)
+  const [layoutSaving, setLayoutSaving] = useState(false)
+  const [layoutMsg, setLayoutMsg] = useState<string | null>(null)
+  const [previewKey, setPreviewKey] = useState(0)
+  const [sampleLine1, setSampleLine1] = useState('In Loving Memory Of')
+  const [sampleLine2, setSampleLine2] = useState('John Smith')
+  const [sampleLine3, setSampleLine3] = useState('1950 - 2024\nForever in our hearts')
+
+  // SKU management
+  const [deletingSkuId, setDeletingSkuId] = useState<number | null>(null)
+  const [editingSkuId, setEditingSkuId] = useState<number | null>(null)
+  const [editSku, setEditSku] = useState<any>(null)
+  const [csvImporting, setCsvImporting] = useState(false)
+  const [csvResult, setCsvResult] = useState<any>(null)
+  const csvInputRef = useCallback((node: HTMLInputElement | null) => { if (node) node.value = '' }, [])
 
   // Add colour form
   const [showAddColour, setShowAddColour] = useState(false)
@@ -49,6 +91,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     loadAll()
+    fetchLayouts().then(setLayouts).catch(() => {})
   }, [])
 
   async function loadAll() {
@@ -171,11 +214,38 @@ export default function AdminPage() {
                         className="pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-64"
                       />
                     </div>
+                    <label className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+                      <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        setCsvImporting(true); setCsvResult(null)
+                        try {
+                          const result = await importSkuCsv(file)
+                          setCsvResult(result)
+                          const s = await fetchSkuMappings(); setSkus(s)
+                          await loadAll()
+                        } catch (err: any) { setCsvResult({ error: err.message }) }
+                        setCsvImporting(false)
+                        e.target.value = ''
+                      }} />
+                      {csvImporting ? 'Importing...' : 'Import CSV'}
+                    </label>
                     <button onClick={() => setShowAddSku(!showAddSku)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
                       <Plus className="w-4 h-4" /> Add SKU
                     </button>
                   </div>
                 </div>
+
+                {csvResult && (
+                  <div className={`px-5 py-3 border-b border-gray-100 flex items-center justify-between ${csvResult.error ? 'bg-red-50' : 'bg-green-50'}`}>
+                    <p className={`text-sm ${csvResult.error ? 'text-red-700' : 'text-green-700'}`}>
+                      {csvResult.error
+                        ? `Import failed: ${csvResult.error}`
+                        : `Imported ${csvResult.created} new SKUs (${csvResult.skipped} skipped)${csvResult.errors?.length ? ` · ${csvResult.errors.length} errors` : ''}`}
+                    </p>
+                    <button onClick={() => setCsvResult(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+                  </div>
+                )}
 
                 {showAddSku && (
                   <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
@@ -228,6 +298,7 @@ export default function AdminPage() {
                         <th className="text-left py-2.5 px-4 text-xs font-medium text-gray-400 uppercase">Decoration</th>
                         <th className="text-left py-2.5 px-4 text-xs font-medium text-gray-400 uppercase">Theme</th>
                         <th className="text-left py-2.5 px-4 text-xs font-medium text-gray-400 uppercase">Processor</th>
+                        <th className="text-left py-2.5 px-4 text-xs font-medium text-gray-400 uppercase w-16"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -249,6 +320,24 @@ export default function AdminPage() {
                             <span className="text-xs px-2 py-0.5 bg-gray-100 rounded font-mono text-gray-600">
                               {s.processor.key}
                             </span>
+                          </td>
+                          <td className="py-2 px-4">
+                            {deletingSkuId === s.id ? (
+                              <div className="flex items-center gap-1">
+                                <button onClick={async () => {
+                                  try {
+                                    await deleteSkuMapping(s.id)
+                                    const updated = await fetchSkuMappings(); setSkus(updated)
+                                  } catch {}
+                                  setDeletingSkuId(null)
+                                }} className="text-xs text-red-600 font-medium hover:text-red-700">Confirm</button>
+                                <button onClick={() => setDeletingSkuId(null)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setDeletingSkuId(s.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -362,6 +451,289 @@ export default function AdminPage() {
                       </span>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Layouts Tab */}
+            {tab === 'layouts' && (
+              <div className="bg-white rounded-xl border border-gray-200">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h2 className="font-semibold text-gray-800">Layout Editor</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">Adjust text positions, font sizes, and spacing per processor. Changes apply to all future SVG generation.</p>
+                </div>
+
+                <div className="grid grid-cols-12 divide-x divide-gray-100">
+                  {/* Processor list */}
+                  <div className="col-span-3 max-h-[600px] overflow-y-auto">
+                    {processors.map(p => {
+                      const hasLayout = layouts.some(l => l.processor_key === p.key)
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={async () => {
+                            setEditingProcessor(p.key)
+                            setLayoutMsg(null)
+                            try {
+                              const defaults = await fetchLayoutDefaults(p.key)
+                              setLayoutDefaults(defaults)
+                              const existing = layouts.find(l => l.processor_key === p.key)
+                              if (existing) {
+                                setLayoutIsNew(false)
+                                setLayoutVals({
+                                  line1_y_mm: existing.line1_y_mm ?? defaults.line1_y_mm,
+                                  line2_y_mm: existing.line2_y_mm ?? defaults.line2_y_mm,
+                                  line3_y_mm: existing.line3_y_mm ?? defaults.line3_y_mm,
+                                  line1_size_pt: existing.line1_size_pt ?? defaults.line1_size_pt,
+                                  line2_size_pt: existing.line2_size_pt ?? defaults.line2_size_pt,
+                                  line3_size_pt: existing.line3_size_pt ?? defaults.line3_size_pt,
+                                  text_x_frac: existing.text_x_frac ?? defaults.text_x_frac,
+                                  font_family: existing.font_family ?? defaults.font_family,
+                                  text_fill: existing.text_fill ?? defaults.text_fill,
+                                  max_chars_line3: existing.max_chars_line3 ?? defaults.max_chars_line3,
+                                  line3_max_rows: existing.line3_max_rows ?? defaults.line3_max_rows,
+                                })
+                              } else {
+                                setLayoutIsNew(true)
+                                setLayoutVals({
+                                  line1_y_mm: defaults.line1_y_mm,
+                                  line2_y_mm: defaults.line2_y_mm,
+                                  line3_y_mm: defaults.line3_y_mm,
+                                  line1_size_pt: defaults.line1_size_pt,
+                                  line2_size_pt: defaults.line2_size_pt,
+                                  line3_size_pt: defaults.line3_size_pt,
+                                  text_x_frac: defaults.text_x_frac,
+                                  font_family: defaults.font_family,
+                                  text_fill: defaults.text_fill,
+                                  max_chars_line3: defaults.max_chars_line3,
+                                  line3_max_rows: defaults.line3_max_rows,
+                                })
+                              }
+                              setPreviewKey(k => k + 1)
+                            } catch {}
+                          }}
+                          className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
+                            editingProcessor === p.key ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''
+                          }`}
+                        >
+                          <p className="text-sm font-medium text-gray-800">{p.display_name}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-xs text-gray-400 font-mono">{p.key}</p>
+                            {hasLayout && <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded">customised</span>}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Editor */}
+                  <div className="col-span-9 p-5">
+                    {!editingProcessor && (
+                      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+                        Select a processor from the list to edit its layout
+                      </div>
+                    )}
+
+                    {editingProcessor && layoutVals && layoutDefaults && (
+                      <div className="space-y-5">
+                        {/* Preview + controls */}
+                        <div className="grid grid-cols-2 gap-5">
+                          {/* Live SVG preview */}
+                          <div>
+                            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Live Preview</h3>
+                            <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 p-2">
+                              <img
+                                key={previewKey}
+                                src={layoutPreviewUrl(editingProcessor, {
+                                  line1_y_mm: layoutVals.line1_y_mm,
+                                  line2_y_mm: layoutVals.line2_y_mm,
+                                  line3_y_mm: layoutVals.line3_y_mm,
+                                  line1_size_pt: layoutVals.line1_size_pt,
+                                  line2_size_pt: layoutVals.line2_size_pt,
+                                  line3_size_pt: layoutVals.line3_size_pt,
+                                  text_x_frac: layoutVals.text_x_frac,
+                                  font_family: layoutVals.font_family,
+                                  text_fill: layoutVals.text_fill,
+                                  line1: sampleLine1,
+                                  line2: sampleLine2,
+                                  line3: sampleLine3,
+                                })}
+                                alt="Layout preview"
+                                className="w-full h-auto"
+                              />
+                            </div>
+                            <div className="mt-2 text-xs text-gray-400">
+                              Cell: {layoutDefaults.cell_width_mm}×{layoutDefaults.cell_height_mm}mm &middot;
+                              Grid: {layoutDefaults.grid_cols}×{layoutDefaults.grid_rows} &middot;
+                              Page: {layoutDefaults.page_width_mm}×{layoutDefaults.page_height_mm}mm
+                            </div>
+                            {/* Sample text inputs */}
+                            <div className="mt-3 space-y-1.5">
+                              <input type="text" value={sampleLine1} onChange={e => { setSampleLine1(e.target.value); setPreviewKey(k => k + 1) }}
+                                className="w-full text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                placeholder="Sample Line 1" />
+                              <input type="text" value={sampleLine2} onChange={e => { setSampleLine2(e.target.value); setPreviewKey(k => k + 1) }}
+                                className="w-full text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                placeholder="Sample Line 2" />
+                              <input type="text" value={sampleLine3} onChange={e => { setSampleLine3(e.target.value); setPreviewKey(k => k + 1) }}
+                                className="w-full text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                placeholder="Sample Line 3" />
+                            </div>
+                          </div>
+
+                          {/* Sliders */}
+                          <div className="space-y-3">
+                            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wide">Parameters</h3>
+                            {SLIDER_FIELDS.map(f => (
+                              <div key={f.key} className="space-y-0.5">
+                                <div className="flex items-center justify-between">
+                                  <label className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: f.color }} />
+                                    {f.label}
+                                  </label>
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="number"
+                                      value={layoutVals[f.key]}
+                                      onChange={e => {
+                                        const v = parseFloat(e.target.value) || 0
+                                        setLayoutVals({ ...layoutVals, [f.key]: v })
+                                        setPreviewKey(k => k + 1)
+                                      }}
+                                      step={f.step}
+                                      className="w-16 text-xs text-right border border-gray-200 rounded px-1.5 py-0.5 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                    />
+                                    {f.unit && <span className="text-[10px] text-gray-400">{f.unit}</span>}
+                                  </div>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={f.min} max={f.max} step={f.step}
+                                  value={layoutVals[f.key]}
+                                  onChange={e => {
+                                    setLayoutVals({ ...layoutVals, [f.key]: parseFloat(e.target.value) })
+                                    setPreviewKey(k => k + 1)
+                                  }}
+                                  className="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-gray-200"
+                                  style={{ accentColor: f.color }}
+                                />
+                              </div>
+                            ))}
+
+                            {/* Font family */}
+                            <div className="space-y-0.5">
+                              <label className="text-xs font-medium text-gray-600">Font Family</label>
+                              <select
+                                value={layoutVals.font_family}
+                                onChange={e => {
+                                  setLayoutVals({ ...layoutVals, font_family: e.target.value })
+                                  setPreviewKey(k => k + 1)
+                                }}
+                                className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                              >
+                                {['Georgia', 'Times New Roman', 'Garamond', 'Palatino', 'Arial', 'Helvetica', 'Verdana', 'Trebuchet MS'].map(f => (
+                                  <option key={f} value={f}>{f}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Text colour */}
+                            <div className="space-y-0.5">
+                              <label className="text-xs font-medium text-gray-600">Text Colour</label>
+                              <div className="flex items-center gap-2">
+                                <input type="color" value={layoutVals.text_fill === 'black' ? '#000000' : layoutVals.text_fill}
+                                  onChange={e => {
+                                    setLayoutVals({ ...layoutVals, text_fill: e.target.value })
+                                    setPreviewKey(k => k + 1)
+                                  }}
+                                  className="w-7 h-7 rounded border border-gray-200 cursor-pointer" />
+                                <input type="text" value={layoutVals.text_fill}
+                                  onChange={e => {
+                                    setLayoutVals({ ...layoutVals, text_fill: e.target.value })
+                                    setPreviewKey(k => k + 1)
+                                  }}
+                                  className="w-24 text-xs border border-gray-200 rounded px-2 py-1 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
+                          <button
+                            onClick={async () => {
+                              setLayoutSaving(true)
+                              setLayoutMsg(null)
+                              try {
+                                await saveLayout(editingProcessor, layoutVals, layoutIsNew)
+                                setLayoutIsNew(false)
+                                const updated = await fetchLayouts()
+                                setLayouts(updated)
+                                setLayoutMsg('Saved!')
+                                setTimeout(() => setLayoutMsg(null), 2000)
+                              } catch (e: any) {
+                                setLayoutMsg(e.message || 'Save failed')
+                              }
+                              setLayoutSaving(false)
+                            }}
+                            disabled={layoutSaving}
+                            className="flex items-center gap-1.5 px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                          >
+                            <Save className="w-4 h-4" />
+                            {layoutSaving ? 'Saving...' : 'Save Layout'}
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (layoutDefaults) {
+                                setLayoutVals({
+                                  line1_y_mm: layoutDefaults.line1_y_mm,
+                                  line2_y_mm: layoutDefaults.line2_y_mm,
+                                  line3_y_mm: layoutDefaults.line3_y_mm,
+                                  line1_size_pt: layoutDefaults.line1_size_pt,
+                                  line2_size_pt: layoutDefaults.line2_size_pt,
+                                  line3_size_pt: layoutDefaults.line3_size_pt,
+                                  text_x_frac: layoutDefaults.text_x_frac,
+                                  font_family: layoutDefaults.font_family,
+                                  text_fill: layoutDefaults.text_fill,
+                                  max_chars_line3: layoutDefaults.max_chars_line3,
+                                  line3_max_rows: layoutDefaults.line3_max_rows,
+                                })
+                                setPreviewKey(k => k + 1)
+                              }
+                            }}
+                            className="flex items-center gap-1.5 px-4 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                            Reset to Defaults
+                          </button>
+
+                          {!layoutIsNew && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await deleteLayout(editingProcessor)
+                                  setLayoutIsNew(true)
+                                  const updated = await fetchLayouts()
+                                  setLayouts(updated)
+                                  setLayoutMsg('Custom layout deleted — using defaults')
+                                  setTimeout(() => setLayoutMsg(null), 2000)
+                                } catch {}
+                              }}
+                              className="flex items-center gap-1.5 px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Delete Custom Layout
+                            </button>
+                          )}
+
+                          {layoutMsg && (
+                            <span className={`text-sm ${layoutMsg.includes('failed') ? 'text-red-600' : 'text-green-600'}`}>{layoutMsg}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
