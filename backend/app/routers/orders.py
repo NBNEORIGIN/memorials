@@ -246,7 +246,7 @@ def parse_amazon_txt(filepath: str) -> list[dict]:
     for _, row in df.iterrows():
         # Expand by quantity (number-of-items)
         try:
-            qty = max(int(row.get("number-of-items", 1)), 1)
+            qty = max(int(row.get("quantity-purchased", 1)), 1)
         except (ValueError, TypeError):
             qty = 1
 

@@ -30,7 +30,7 @@ def extract_orders_from_report(report_path: str) -> list[dict]:
                 "order-id": row.get("order-id", "").strip(),
                 "order-item-id": row.get("order-item-id", "").strip(),
                 "sku": row.get("sku", "").strip(),
-                "number-of-items": row.get("number-of-items", "1").strip(),
+                "quantity-purchased": row.get("quantity-purchased", "1").strip(),
                 "zip_url": zip_url if zip_url.startswith("http") else "",
             })
     return orders
@@ -118,7 +118,7 @@ def process_report_file(
     for i, order in enumerate(orders):
         # Expand by quantity
         try:
-            qty = max(int(order.get("number-of-items", "1")), 1)
+            qty = max(int(order.get("quantity-purchased", "1")), 1)
         except (ValueError, TypeError):
             qty = 1
 

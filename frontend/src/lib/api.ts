@@ -199,6 +199,27 @@ export async function deleteLayout(layoutId: number) {
   if (!res.ok) throw new Error('Delete failed')
 }
 
+export async function submitBugReport(report: {
+  subject: string
+  description: string
+  page?: string
+  job_id?: number | null
+  item_id?: number | null
+  steps_to_reproduce?: string
+  reporter?: string
+}) {
+  const res = await fetch(`${API_URL}/api/bugreport/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(report),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to submit bug report')
+  }
+  return res.json()
+}
+
 export function layoutPreviewUrl(processorKey: string, params: Record<string, any>) {
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {

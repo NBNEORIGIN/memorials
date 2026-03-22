@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Upload, Play, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, Settings, Pencil, Check, X, ChevronDown, ChevronUp } from 'lucide-react'
-import { uploadOrderFiles, generateSvgs, fetchJobs, fetchJob, deleteJob, resetJob, updateJobItem, svgPreviewUrl, svgDownloadUrl, csvDownloadUrl } from '@/lib/api'
+import { Upload, Play, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, Settings, Pencil, Check, X, ChevronDown, ChevronUp, Bug, Send } from 'lucide-react'
+import { uploadOrderFiles, generateSvgs, fetchJobs, fetchJob, deleteJob, resetJob, updateJobItem, svgPreviewUrl, svgDownloadUrl, csvDownloadUrl, submitBugReport } from '@/lib/api'
 
 type JobItem = {
   id: number
@@ -137,6 +137,9 @@ export default function Home() {
   const [dragActive, setDragActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
+  const [bugModalOpen, setBugModalOpen] = useState(false)
+  const [bugSending, setBugSending] = useState(false)
+  const [bugSent, setBugSent] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -247,10 +250,20 @@ export default function Home() {
               <p className="text-[11px] text-gray-400">Order Processing &amp; SVG Generation</p>
             </div>
           </div>
-          <a href="/admin" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-            <Settings className="w-4 h-4" />
-            Admin
-          </a>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setBugModalOpen(true); setBugSent(false) }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              title="Report a bug"
+            >
+              <Bug className="w-4 h-4" />
+              Report Bug
+            </button>
+            <a href="/memorials/admin" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+              <Settings className="w-4 h-4" />
+              Admin
+            </a>
+          </div>
         </div>
       </header>
 
@@ -566,6 +579,81 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      {/* Bug Report Modal */}
+      {bugModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setBugModalOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-red-50">
+              <div className="flex items-center gap-2">
+                <Bug className="w-5 h-5 text-red-500" />
+                <h2 className="text-base font-bold text-gray-900">Report a Bug</h2>
+              </div>
+              <button onClick={() => setBugModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            {bugSent ? (
+              <div className="px-6 py-10 text-center">
+                <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                <h3 className="text-lg font-semibold text-gray-900">Bug Report Sent</h3>
+                <p className="text-sm text-gray-500 mt-1">Emailed to Toby, Jo &amp; Gabby. We&apos;ll look into it.</p>
+                <button onClick={() => setBugModalOpen(false)} className="mt-5 px-5 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-900 transition-colors">Close</button>
+              </div>
+            ) : (
+              <form
+                className="px-6 py-5 space-y-4"
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  const form = e.target as HTMLFormElement
+                  const data = new FormData(form)
+                  setBugSending(true)
+                  try {
+                    await submitBugReport({
+                      subject: data.get('subject') as string,
+                      description: data.get('description') as string,
+                      steps_to_reproduce: data.get('steps') as string,
+                      reporter: data.get('reporter') as string,
+                      page: window.location.href,
+                      job_id: activeJob?.id ?? null,
+                    })
+                    setBugSent(true)
+                  } catch (err: any) {
+                    alert(err.message || 'Failed to send')
+                  } finally {
+                    setBugSending(false)
+                  }
+                }}
+              >
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Your Name</label>
+                  <input name="reporter" required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400" placeholder="e.g. Jo" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Subject</label>
+                  <input name="subject" required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400" placeholder="Brief description of the issue" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">What went wrong?</label>
+                  <textarea name="description" required rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 resize-none" placeholder="Describe the bug in detail — what did you expect to happen vs what actually happened?" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Steps to reproduce <span className="font-normal text-gray-400">(optional)</span></label>
+                  <textarea name="steps" rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 resize-none" placeholder="1. Upload file X&#10;2. Click Generate&#10;3. See error..." />
+                </div>
+                {activeJob && (
+                  <p className="text-xs text-gray-400">Active job #{activeJob.id} ({activeJob.filename}) will be included in the report.</p>
+                )}
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setBugModalOpen(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                  <button type="submit" disabled={bugSending} className="flex items-center gap-2 px-5 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors shadow-sm">
+                    <Send className="w-4 h-4" />
+                    {bugSending ? 'Sending...' : 'Send Report'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

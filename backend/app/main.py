@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
-from app.routers import skus, orders, generate, layouts
+from app.routers import skus, orders, generate, layouts, bugreport
 # Import models so they register with Base.metadata
 import app.models  # noqa: F401
 
@@ -27,6 +27,7 @@ app.include_router(skus.router)
 app.include_router(orders.router)
 app.include_router(generate.router)
 app.include_router(layouts.router)
+app.include_router(bugreport.router)
 
 
 @app.get("/api/health")
