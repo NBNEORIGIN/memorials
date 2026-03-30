@@ -8,14 +8,9 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/api/bugreport", tags=["Bug Reports"])
+from app.config import settings
 
-SMTP_HOST = "smtp.ionos.co.uk"
-SMTP_PORT = 587
-SMTP_USER = "toby@nbnesigns.com"
-SMTP_PASS = "!49Monkswood"
-FROM_EMAIL = "toby@nbnesigns.com"
-TO_EMAILS = ["toby@nbnesigns.com", "jo@nbnesigns.com", "gabby@nbnesigns.com"]
+router = APIRouter(prefix="/api/bugreport", tags=["Bug Reports"])
 
 
 class BugReport(BaseModel):
@@ -31,7 +26,13 @@ class BugReport(BaseModel):
 @router.post("/")
 def submit_bug_report(report: BugReport):
     """Submit a bug report — sent via email to the team."""
+    if not settings.SMTP_USER or not settings.SMTP_PASS:
+        raise HTTPException(status_code=503, detail="SMTP not configured")
+
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    recipients = [e.strip() for e in settings.SMTP_TO.split(",") if e.strip()]
+    if not recipients:
+        raise HTTPException(status_code=503, detail="No SMTP recipients configured")
 
     html = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px;">
@@ -59,15 +60,15 @@ def submit_bug_report(report: BugReport):
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"[Memorials Bug] {report.subject}"
-    msg["From"] = FROM_EMAIL
-    msg["To"] = ", ".join(TO_EMAILS)
+    msg["From"] = settings.SMTP_FROM
+    msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(html, "html"))
 
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
             server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.sendmail(FROM_EMAIL, TO_EMAILS, msg.as_string())
+            server.login(settings.SMTP_USER, settings.SMTP_PASS)
+            server.sendmail(settings.SMTP_FROM, recipients, msg.as_string())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send email: {e}")
 
