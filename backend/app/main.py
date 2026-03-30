@@ -2,9 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
-from app.routers import skus, orders, generate, layouts, bugreport
+from app.routers import skus, orders, generate, layouts, bugreport, memory
 # Import models so they register with Base.metadata
 import app.models  # noqa: F401
+import app.memory.models  # noqa: F401
 
 app = FastAPI(
     title="NBNE Memorials",
@@ -28,6 +29,7 @@ app.include_router(orders.router)
 app.include_router(generate.router)
 app.include_router(layouts.router)
 app.include_router(bugreport.router)
+app.include_router(memory.router)
 
 
 @app.get("/api/health")

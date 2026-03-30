@@ -6,6 +6,9 @@ from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
 from app.database import Base, get_db
+# Import all models so they register with Base.metadata
+import app.models  # noqa: F401
+import app.memory.models  # noqa: F401
 from app.main import app
 
 
@@ -19,13 +22,16 @@ def engine():
 
 @pytest.fixture()
 def db(engine):
-    Session = sessionmaker(bind=engine)
+    connection = engine.connect()
+    transaction = connection.begin()
+    Session = sessionmaker(bind=connection)
     session = Session()
     try:
         yield session
     finally:
-        session.rollback()
         session.close()
+        transaction.rollback()
+        connection.close()
 
 
 @pytest.fixture()
