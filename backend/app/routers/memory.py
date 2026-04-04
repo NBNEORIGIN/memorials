@@ -40,6 +40,20 @@ class DecisionIn(BaseModel):
     session_id: Optional[str] = None
 
 
+class CairnWriteRequest(BaseModel):
+    """Cairn Protocol Step 4 — write-back format."""
+    model_config = {"protected_namespaces": ()}
+
+    project: str = "memorials"
+    query: str
+    decision: str
+    rejected: str = ""
+    outcome: str = "committed"
+    model: str = ""
+    files_changed: list[str] = []
+    session_id: Optional[str] = None
+
+
 class IndexRequest(BaseModel):
     codebase_path: str = "D:/memorials"
     force_reindex: bool = False
@@ -57,7 +71,7 @@ def retrieve(
 ):
     """Hybrid BM25 + cosine similarity retrieval over indexed code chunks."""
     results = _retriever.retrieve(query, db, limit=limit)
-    return {"query": query, "count": len(results), "results": results}
+    return {"query": query, "project": "memorials", "count": len(results), "results": results}
 
 
 # ---------------------------------------------------------------------------
@@ -164,3 +178,37 @@ def get_decisions(
     """Get recorded decisions, optionally filtered by type."""
     decisions = mem_store.get_decisions(db, decision_type=decision_type, limit=limit)
     return {"count": len(decisions), "decisions": decisions}
+
+
+# ---------------------------------------------------------------------------
+# Cairn Protocol — write-back (Step 4)
+# ---------------------------------------------------------------------------
+
+@router.post("/write")
+def cairn_write(req: CairnWriteRequest, db: Session = Depends(get_db)):
+    """Cairn Protocol Step 4 — write back a decision after completing a task.
+
+    Accepts the standard Cairn write-back format and maps to the local
+    decision store. Compatible with: POST /memory/write on the Cairn API.
+    """
+    from datetime import datetime, timezone
+
+    saved = mem_store.record_decision(
+        db=db,
+        decision_type=req.outcome,
+        description=req.decision,
+        reasoning=req.rejected,
+        files_affected=req.files_changed,
+        session_id=req.session_id,
+        query=req.query,
+        rejected=req.rejected,
+        outcome=req.outcome,
+        model_used=req.model,
+        files_changed=req.files_changed,
+    )
+    return {
+        "id": saved.id,
+        "project": req.project,
+        "outcome": req.outcome,
+        "written_at": datetime.now(timezone.utc).isoformat() + "Z",
+    }

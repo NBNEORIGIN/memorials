@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     SMTP_FROM: str = ""
     SMTP_TO: str = ""  # comma-separated recipient list
 
+    # CORS — comma-separated origins, override in .env for local dev
+    CORS_ORIGINS: str = "https://app.nbnesigns.co.uk"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

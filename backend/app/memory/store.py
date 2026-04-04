@@ -90,6 +90,12 @@ def record_decision(
     reasoning: str = "",
     files_affected: Optional[list[str]] = None,
     session_id: Optional[str] = None,
+    # Cairn Protocol fields
+    query: str = "",
+    rejected: str = "",
+    outcome: str = "",
+    model_used: str = "",
+    files_changed: Optional[list[str]] = None,
 ) -> Decision:
     """Record an architectural or implementation decision."""
     dec = Decision(
@@ -98,6 +104,11 @@ def record_decision(
         description=description,
         reasoning=reasoning,
         files_affected=files_affected or [],
+        query=query,
+        rejected=rejected or reasoning,  # fall back to reasoning if no explicit rejected
+        outcome=outcome or decision_type,
+        model_used=model_used,
+        files_changed=files_changed or files_affected or [],
     )
     db.add(dec)
     db.commit()
@@ -124,6 +135,12 @@ def get_decisions(
             "reasoning": r.reasoning,
             "files_affected": r.files_affected,
             "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            # Cairn Protocol fields
+            "query": getattr(r, "query", None) or "",
+            "rejected": getattr(r, "rejected", None) or "",
+            "outcome": getattr(r, "outcome", None) or "",
+            "model_used": getattr(r, "model_used", None) or "",
+            "files_changed": getattr(r, "files_changed", None) or [],
         }
         for r in rows
     ]
