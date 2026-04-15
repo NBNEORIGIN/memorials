@@ -36,3 +36,21 @@ def test_all_processors_registered():
 
 def test_processor_count():
     assert len(list_registered()) == 22
+
+
+def test_content_calibration_offset_default():
+    """Content x offset compensates for print/cut mechanical offset."""
+    from app.processors.base import BaseProcessor
+    assert BaseProcessor.content_x_offset_mm == -1.5
+    assert BaseProcessor.content_y_offset_mm == 0.0
+
+
+def test_content_offset_overridable_via_layout():
+    """Layout overrides must be able to tweak the calibration per processor/SKU."""
+    from app.processors.registry import get_processor
+    proc = get_processor(
+        "regular_stakes_graphic_coloured", "/tmp", "/tmp",
+        layout_overrides={"content_x_offset_mm": -2.0},
+    )
+    assert proc is not None
+    assert proc.lv("content_x_offset_mm") == -2.0

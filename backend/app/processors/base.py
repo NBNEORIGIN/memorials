@@ -220,6 +220,12 @@ class BaseProcessor(ABC):
     # Stroke width in mm
     stroke_width_mm: float = 0.1
 
+    # Content calibration offsets (mm) — compensates for print/cut
+    # mechanical offset. Cell borders (cut lines) stay put; text and
+    # graphics shift by this amount. Override per-processor if needed.
+    content_x_offset_mm: float = -1.5
+    content_y_offset_mm: float = 0.0
+
     def __init__(self, graphics_dir: str, output_dir: str, layout_overrides: Optional[dict] = None):
         self.graphics_dir = graphics_dir
         self.output_dir = output_dir
@@ -311,9 +317,13 @@ class BaseProcessor(ABC):
                     stroke_width=self.stroke_width_mm * PX_PER_MM,
                 ))
 
-                # Render the item content into this cell
+                # Render the item content into this cell.
+                # Apply content calibration offset (shifts text+graphic
+                # without moving the cell border / cut line).
                 if idx < len(items):
-                    self.render_cell(dwg, items[idx], x, y)
+                    cx_off = self.lv("content_x_offset_mm", 0.0) * PX_PER_MM
+                    cy_off = self.lv("content_y_offset_mm", 0.0) * PX_PER_MM
+                    self.render_cell(dwg, items[idx], x + cx_off, y + cy_off)
 
             # Reference point (0.1mm blue square, bottom-right corner)
             ref = 0.1 * PX_PER_MM
