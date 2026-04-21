@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import uuid
 from datetime import datetime
 from typing import List, Optional
 
@@ -15,6 +16,12 @@ from app.schemas import JobOut, JobSummaryOut, JobItemOut, JobItemUpdate
 from app.ingestion.amazon import process_report_file
 
 router = APIRouter(prefix="/api/jobs", tags=["Order Processing"])
+
+
+def _safe_upload_path(original_filename: str) -> str:
+    """Generate a safe upload path using UUID, preventing path traversal."""
+    ext = os.path.splitext(os.path.basename(original_filename))[1]
+    return os.path.join(settings.UPLOAD_DIR, f"{uuid.uuid4().hex}{ext}")
 
 
 @router.get("/", response_model=list[JobSummaryOut])
@@ -45,8 +52,8 @@ async def upload_order_file(
     if not file.filename.lower().endswith(".txt"):
         raise HTTPException(status_code=400, detail="Only .txt files accepted")
 
-    # Save uploaded file
-    upload_path = os.path.join(settings.UPLOAD_DIR, file.filename)
+    # Save uploaded file (UUID name prevents path traversal)
+    upload_path = _safe_upload_path(file.filename)
     with open(upload_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
@@ -60,58 +67,16 @@ async def upload_order_file(
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Failed to parse file: {e}")
 
-    # Create job
+    # Create job (original filename stored for display only)
     job = Job(source="amazon", filename=file.filename, item_count=len(items_data))
     db.add(job)
     db.flush()
 
-    # Resolve each item against SKU mappings
-    for item_data in items_data:
-        sku = item_data.get("sku", "").strip()
-        mapping = (
-            db.query(SkuMapping)
-            .options(
-                joinedload(SkuMapping.colour),
-                joinedload(SkuMapping.memorial_type),
-                joinedload(SkuMapping.decoration_type),
-                joinedload(SkuMapping.theme),
-                joinedload(SkuMapping.processor),
-            )
-            .filter(SkuMapping.sku == sku)
-            .first()
-        )
-
-        job_item = JobItem(
-            job_id=job.id,
-            order_id=item_data.get("order-id"),
-            order_item_id=item_data.get("order-item-id"),
-            sku=sku,
-            quantity=int(item_data.get("quantity", 1)),
-            graphic=item_data.get("graphic"),
-            line_1=item_data.get("line_1"),
-            line_2=item_data.get("line_2"),
-            line_3=item_data.get("line_3"),
-            image_path=item_data.get("image_path"),
-        )
-
-        if mapping:
-            job_item.colour = mapping.colour.name
-            job_item.memorial_type = mapping.memorial_type.name
-            job_item.decoration_type = mapping.decoration_type.name if mapping.decoration_type else None
-            job_item.theme = mapping.theme.name if mapping.theme else None
-            job_item.processor_key = mapping.processor.key
-            job_item.status = "ready"
-        else:
-            job_item.status = "unmatched"
-            job_item.error = f"SKU '{sku}' not found in database"
-
-        db.add(job_item)
-
+    _resolve_and_add_items(db, job, items_data)
     job.status = "parsed"
     db.commit()
     db.refresh(job)
 
-    # Re-query with items loaded
     return get_job(job.id, db)
 
 
@@ -178,7 +143,7 @@ async def upload_multi_order_files(
     filenames: list[str] = []
 
     for uploaded in txt_files:
-        upload_path = os.path.join(settings.UPLOAD_DIR, uploaded.filename)
+        upload_path = _safe_upload_path(uploaded.filename)
         with open(upload_path, "wb") as f:
             shutil.copyfileobj(uploaded.file, f)
         filenames.append(uploaded.filename)

@@ -46,7 +46,11 @@ class ChatMessage(Base):
 
 
 class Decision(Base):
-    """Architectural and implementation decisions — institutional memory."""
+    """Architectural and implementation decisions — institutional memory.
+
+    Original fields: decision_type, description, reasoning, files_affected.
+    Cairn Protocol fields (added): query, rejected, outcome, model_used, files_changed.
+    """
     __tablename__ = "decisions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -56,6 +60,13 @@ class Decision(Base):
     reasoning = Column(Text, nullable=True)
     files_affected = Column(JSON, default=list)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Cairn Protocol fields
+    query = Column(Text, nullable=True)             # original task/question
+    rejected = Column(Text, nullable=True)          # alternatives ruled out
+    outcome = Column(String(50), nullable=True)     # committed|partial|failed|deferred
+    model_used = Column(String(100), nullable=True) # which model did the work
+    files_changed = Column(JSON, default=list)      # list of files modified
 
     __table_args__ = (
         Index("idx_decisions_type", "decision_type"),
