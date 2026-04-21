@@ -39,9 +39,11 @@ def test_processor_count():
 
 
 def test_content_calibration_offset_default():
-    """Content x offset compensates for print/cut mechanical offset."""
+    """Default calibration is 0 — mathematically centred. Overridable
+    via BaseProcessor subclass or CellLayout if physical calibration
+    is ever needed."""
     from app.processors.base import BaseProcessor
-    assert BaseProcessor.content_x_offset_mm == -1.5
+    assert BaseProcessor.content_x_offset_mm == 0.0
     assert BaseProcessor.content_y_offset_mm == 0.0
 
 

@@ -222,8 +222,9 @@ class BaseProcessor(ABC):
 
     # Content calibration offsets (mm) — compensates for print/cut
     # mechanical offset. Cell borders (cut lines) stay put; text and
-    # graphics shift by this amount. Override per-processor if needed.
-    content_x_offset_mm: float = -1.5
+    # graphics shift by this amount. Override per-processor or via
+    # CellLayout if needed. Default 0 = mathematically centred.
+    content_x_offset_mm: float = 0.0
     content_y_offset_mm: float = 0.0
 
     def __init__(self, graphics_dir: str, output_dir: str, layout_overrides: Optional[dict] = None):
