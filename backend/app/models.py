@@ -203,3 +203,19 @@ class CellLayout(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, onupdate=func.now(), nullable=True)
+
+
+class AppSetting(Base):
+    """Key/value store for global app settings.
+
+    Used for print calibration (content_x_offset_mm, content_y_offset_mm)
+    and any other runtime configuration that needs to be adjustable without
+    code changes. One row per setting key.
+    """
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=True,
+    )

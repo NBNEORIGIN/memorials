@@ -140,6 +140,14 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
     error_count = 0
     graphics_dir = settings.GRAPHICS_DIR
 
+    # ── Fetch global print calibration (applied to all processors) ─
+    from app.routers.settings import get_calibration
+    calib = get_calibration(db)
+    global_calib_overrides = {
+        "content_x_offset_mm": calib["x_mm"],
+        "content_y_offset_mm": calib["y_mm"],
+    }
+
     # ── Group ready items by processor_key ────────────────────────
     groups: Dict[str, List[JobItem]] = defaultdict(list)
     for item in job.items:
@@ -159,7 +167,12 @@ def generate_svgs(job_id: int, db: Session = Depends(get_db)):
     _BLACK_COLOURS = {"black"}
 
     for proc_key, db_items in groups.items():
-        processor = get_processor(proc_key, graphics_dir, settings.OUTPUT_DIR)
+        # Pass global calibration as processor-level layout overrides so
+        # content_x_offset_mm / content_y_offset_mm take effect via lv().
+        processor = get_processor(
+            proc_key, graphics_dir, settings.OUTPUT_DIR,
+            layout_overrides=dict(global_calib_overrides),
+        )
         if processor is None:
             for it in db_items:
                 it.status = "error"

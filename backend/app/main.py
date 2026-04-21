@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import skus, orders, generate, layouts, bugreport, memory
+from app.routers import skus, orders, generate, layouts, bugreport, memory, settings as settings_router
 # Import models so they register with Base.metadata
 import app.models  # noqa: F401
 import app.memory.models  # noqa: F401
@@ -57,6 +57,7 @@ app.include_router(generate.router)
 app.include_router(layouts.router)
 app.include_router(bugreport.router)
 app.include_router(memory.router)
+app.include_router(settings_router.router)
 
 
 @app.get("/api/health")

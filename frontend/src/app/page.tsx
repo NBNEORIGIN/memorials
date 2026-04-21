@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Upload, Play, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, Settings, Pencil, Check, X, ChevronDown, ChevronUp, Bug, Send } from 'lucide-react'
-import { uploadOrderFiles, generateSvgs, fetchJobs, fetchJob, deleteJob, resetJob, updateJobItem, svgPreviewUrl, svgDownloadUrl, csvDownloadUrl, submitBugReport } from '@/lib/api'
+import { Upload, Play, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, Settings, Pencil, Check, X, ChevronDown, ChevronUp, Bug, Send, Crosshair, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCcw } from 'lucide-react'
+import { uploadOrderFiles, generateSvgs, fetchJobs, fetchJob, deleteJob, resetJob, updateJobItem, svgPreviewUrl, svgDownloadUrl, csvDownloadUrl, submitBugReport, fetchCalibration, saveCalibration } from '@/lib/api'
 
 type JobItem = {
   id: number
@@ -140,11 +140,25 @@ export default function Home() {
   const [bugModalOpen, setBugModalOpen] = useState(false)
   const [bugSending, setBugSending] = useState(false)
   const [bugSent, setBugSent] = useState(false)
+  const [calibModalOpen, setCalibModalOpen] = useState(false)
+  const [calibX, setCalibX] = useState(0)
+  const [calibY, setCalibY] = useState(0)
+  const [calibStep, setCalibStep] = useState(0.5)
+  const [calibSaving, setCalibSaving] = useState(false)
+  const [calibSaved, setCalibSaved] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchJobs().then(setJobs).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (calibModalOpen) {
+      fetchCalibration()
+        .then(c => { setCalibX(c.x_mm); setCalibY(c.y_mm); setCalibSaved(false) })
+        .catch(() => {})
+    }
+  }, [calibModalOpen])
 
   const handleUpload = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -251,6 +265,14 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCalibModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+              title="Print calibration — adjust global offset for all memorials"
+            >
+              <Crosshair className="w-4 h-4" />
+              Calibration
+            </button>
             <button
               onClick={() => { setBugModalOpen(true); setBugSent(false) }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -579,6 +601,159 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      {/* Calibration Modal */}
+      {calibModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setCalibModalOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-indigo-50">
+              <div className="flex items-center gap-2">
+                <Crosshair className="w-5 h-5 text-indigo-600" />
+                <h2 className="text-base font-bold text-gray-900">Print Calibration</h2>
+              </div>
+              <button onClick={() => setCalibModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-6 py-5 space-y-5">
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Global offset applied to all memorial designs. Use this to compensate for
+                printer/cutter alignment. Negative X shifts left; positive X shifts right.
+                Negative Y shifts up; positive Y shifts down. Takes effect on next generate.
+              </p>
+
+              {/* Crosshair controls */}
+              <div className="flex items-center justify-center py-3">
+                <div className="grid grid-cols-3 grid-rows-3 gap-2 w-48">
+                  <div />
+                  <button
+                    type="button"
+                    onClick={() => setCalibY(y => +(y - calibStep).toFixed(2))}
+                    className="w-14 h-14 flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
+                    title={`Up ${calibStep}mm`}
+                  >
+                    <ArrowUp className="w-5 h-5 text-gray-600" />
+                  </button>
+                  <div />
+                  <button
+                    type="button"
+                    onClick={() => setCalibX(x => +(x - calibStep).toFixed(2))}
+                    className="w-14 h-14 flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
+                    title={`Left ${calibStep}mm`}
+                  >
+                    <ArrowLeft className="w-5 h-5 text-gray-600" />
+                  </button>
+                  <div className="w-14 h-14 flex items-center justify-center bg-indigo-600 rounded-lg text-white">
+                    <Crosshair className="w-5 h-5" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCalibX(x => +(x + calibStep).toFixed(2))}
+                    className="w-14 h-14 flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
+                    title={`Right ${calibStep}mm`}
+                  >
+                    <ArrowRight className="w-5 h-5 text-gray-600" />
+                  </button>
+                  <div />
+                  <button
+                    type="button"
+                    onClick={() => setCalibY(y => +(y + calibStep).toFixed(2))}
+                    className="w-14 h-14 flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
+                    title={`Down ${calibStep}mm`}
+                  >
+                    <ArrowDown className="w-5 h-5 text-gray-600" />
+                  </button>
+                  <div />
+                </div>
+              </div>
+
+              {/* Numeric inputs */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">X offset (mm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={calibX}
+                    onChange={e => setCalibX(parseFloat(e.target.value) || 0)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Y offset (mm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={calibY}
+                    onChange={e => setCalibY(parseFloat(e.target.value) || 0)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Step size (mm)</label>
+                <select
+                  value={calibStep}
+                  onChange={e => setCalibStep(parseFloat(e.target.value))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                >
+                  <option value={0.1}>0.1mm (fine)</option>
+                  <option value={0.5}>0.5mm (default)</option>
+                  <option value={1.0}>1.0mm</option>
+                  <option value={2.0}>2.0mm (coarse)</option>
+                </select>
+              </div>
+
+              {calibSaved && (
+                <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg">
+                  <CheckCircle className="w-4 h-4" />
+                  Saved. Takes effect on next generate.
+                </div>
+              )}
+
+              <div className="flex justify-between gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => { setCalibX(0); setCalibY(0) }}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Reset to 0,0"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Reset
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCalibModalOpen(false)}
+                    className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    disabled={calibSaving}
+                    onClick={async () => {
+                      setCalibSaving(true)
+                      setCalibSaved(false)
+                      try {
+                        await saveCalibration({ x_mm: calibX, y_mm: calibY })
+                        setCalibSaved(true)
+                      } catch (err: any) {
+                        alert(err.message || 'Failed to save')
+                      } finally {
+                        setCalibSaving(false)
+                      }
+                    }}
+                    className="flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm"
+                  >
+                    <Check className="w-4 h-4" />
+                    {calibSaving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bug Report Modal */}
       {bugModalOpen && (

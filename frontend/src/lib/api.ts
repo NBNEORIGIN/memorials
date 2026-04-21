@@ -220,6 +220,27 @@ export async function submitBugReport(report: {
   return res.json()
 }
 
+// ── Print Calibration ──
+
+export async function fetchCalibration(): Promise<{ x_mm: number; y_mm: number }> {
+  const res = await fetch(`${API_URL}/api/settings/calibration`, { cache: 'no-store' })
+  if (!res.ok) throw new Error('Failed to fetch calibration')
+  return res.json()
+}
+
+export async function saveCalibration(calib: { x_mm: number; y_mm: number }) {
+  const res = await fetch(`${API_URL}/api/settings/calibration`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(calib),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to save calibration')
+  }
+  return res.json()
+}
+
 export function layoutPreviewUrl(processorKey: string, params: Record<string, any>) {
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
